@@ -8,6 +8,7 @@ const state = {
   currentUser: null,
   settings: {"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true},
   categories: [],
+  subcategories: {},
   people: [],
   stockConfig: {"enabled":false,"min":0},
   queuedOrders: [],
@@ -27,6 +28,28 @@ const imagePreviewCache = {};
 const imageLoadInFlight = {};
 const imageMissingRefs = {};
 let scheduledImageUiRefresh = 0;
+
+
+const SESSION_STORAGE_KEY = 'cafeteria_session_user';
+
+function persistSession() {
+  try {
+    if (state.currentUser?.username) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ username: state.currentUser.username }));
+    else localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {}
+}
+
+function restoreSessionFromStorage() {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    const username = String(data?.username || '').trim();
+    if (!username) return;
+    state.currentUser = { username, loginAt: Date.now(), lastActivityAt: Date.now() };
+  } catch {}
+}
+
 
 const $ = (id) => document.getElementById(id);
 const loginScreen = $('loginScreen');
@@ -226,6 +249,11 @@ const exportProductsFromListBtn = $('exportProductsFromListBtn');
 const newCategoryInput = $('newCategoryInput');
 const addCategoryBtn = $('addCategoryBtn');
 const categoriesTable = $('categoriesTable');
+const subCategoryParentSelect = $('subCategoryParentSelect');
+const subCategoryNameInput = $('subCategoryNameInput');
+const subCategoryImageInput = $('subCategoryImageInput');
+const addSubCategoryBtn = $('addSubCategoryBtn');
+const subCategoriesTable = $('subCategoriesTable');
 const comboNameInput = $('comboNameInput');
 const comboPriceInput = $('comboPriceInput');
 const comboProductsSelect = $('comboProductsSelect');
@@ -1481,6 +1509,8 @@ function openImageUploadForProduct(productId) {
         setTimeout(() => setImageUploadStatus('product', productId, null), 2400);
       }
       renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
       renderSaleSelectors();
       renderTouchSaleUi();
     });
@@ -1519,6 +1549,8 @@ function openImageUploadForCategory(categoryName) {
         setTimeout(() => setImageUploadStatus('category', categoryName, null), 2400);
       }
       renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
       renderTouchSaleUi();
     });
   });
@@ -2559,7 +2591,7 @@ function openWarehouseResetModal() {
   const overlay = document.createElement('div');
   overlay.id = overlayId;
   overlay.className = 'modal';
-  overlay.innerHTML = `<div class="modal-card"><h3>Restablecer Almacén</h3><p>Esta acción eliminará completamente toda la información del almacén. Esta acción NO se puede deshacer.</p><label>Para confirmar, ingrese su contraseña.<input id="warehouseResetPassInput" type="password" placeholder="Contraseña actual" /></label><div class="grid2"><button id="warehouseResetConfirmBtn" class="danger" type="button">Confirmar</button><button id="warehouseResetCancelBtn" class="secondary" type="button">Cancelar</button></div><p id="warehouseResetMsg"></p></div>`;
+  overlay.innerHTML = `<div class="modal-card"><h3>Restablecer componentes</h3><p>Esta acción eliminará completamente toda la información de componentes. Esta acción NO se puede deshacer.</p><label>Para confirmar, ingrese su contraseña.<input id="warehouseResetPassInput" type="password" placeholder="Contraseña actual" /></label><div class="grid2"><button id="warehouseResetConfirmBtn" class="danger" type="button">Confirmar</button><button id="warehouseResetCancelBtn" class="secondary" type="button">Cancelar</button></div><p id="warehouseResetMsg"></p></div>`;
   document.body.appendChild(overlay);
   document.getElementById('warehouseResetCancelBtn')?.addEventListener('click', () => overlay.remove());
   document.getElementById('warehouseResetConfirmBtn')?.addEventListener('click', () => {
@@ -2576,7 +2608,7 @@ function openWarehouseResetModal() {
     persist();
     renderWarehouse();
     overlay.remove();
-    if (warehouseStatus) warehouseStatus.textContent = 'Almacén restablecido correctamente.';
+    if (warehouseStatus) warehouseStatus.textContent = 'Componentes restablecidos correctamente.';
   });
 }
 
@@ -2585,10 +2617,9 @@ function renderWarehouse() {
   normalizeWarehouseData();
   const canView = hasPermission('viewWarehouseButton');
   if (!canView) {
-    warehouseStatus && (warehouseStatus.textContent = 'No tienes permiso para ver Almacén.');
+    warehouseStatus && (warehouseStatus.textContent = 'No tienes permiso para ver componentes.');
     homeScreen?.classList.remove('hidden');
-    warehouseScreen?.classList.add('hidden');
-    return;
+      return;
   }
 
   const currentRoute = normalizeRoute(window.location.hash || '#warehouse');
@@ -2598,7 +2629,7 @@ function renderWarehouse() {
     const wrap = document.createElement('div');
     wrap.id = 'warehouseTopActions';
     wrap.className = 'grid3';
-    wrap.innerHTML = '<button id="openWarehouseManagementTabBtn" class="secondary" type="button">Gestión de Componentes y Recetas</button><button id="openWarehouseMovesTabBtn" class="secondary" type="button">Movimientos</button><button id="warehouseResetBtn" class="danger" type="button">Restablecer Almacén</button>';
+    wrap.innerHTML = '<button id="openWarehouseManagementTabBtn" class="secondary" type="button">Gestión de Componentes y Recetas</button><button id="openWarehouseMovesTabBtn" class="secondary" type="button">Movimientos</button><button id="warehouseResetBtn" class="danger" type="button">Restablecer componentes</button>';
     warehouseStatus?.insertAdjacentElement('afterend', wrap);
     document.getElementById('openWarehouseManagementTabBtn')?.addEventListener('click', () => openWarehouseNewTab('warehouse/gestion'));
     document.getElementById('openWarehouseMovesTabBtn')?.addEventListener('click', () => openWarehouseNewTab('warehouse/movimientos'));
@@ -2629,7 +2660,7 @@ function renderWarehouse() {
     const bottom = document.createElement('div');
     bottom.id = 'warehouseBottomActions';
     bottom.className = 'grid2';
-    bottom.innerHTML = '<button id="warehouseBottomMovesBtn" class="secondary" type="button">Movimientos</button><button id="warehouseBottomResetBtn" class="danger" type="button">Restablecer Almacén</button>';
+    bottom.innerHTML = '<button id="warehouseBottomMovesBtn" class="secondary" type="button">Movimientos</button><button id="warehouseBottomResetBtn" class="danger" type="button">Restablecer componentes</button>';
     warehouseTable.closest('table')?.insertAdjacentElement('afterend', bottom);
     document.getElementById('warehouseBottomMovesBtn')?.addEventListener('click', () => navigateTo('warehouse/movimientos'));
     document.getElementById('warehouseBottomResetBtn')?.addEventListener('click', openWarehouseResetModal);
@@ -2691,6 +2722,8 @@ function importProductsFromExcelFile(file) {
       });
       persist();
       renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
       renderSaleSelectors();
       alert(`Importación finalizada.\nCreados: ${created}\nActualizados: ${updated}\nErrores: ${errors.length}${errors.length ? `\n\n${errors.join('\n')}` : ''}`);
     } catch (error) {
@@ -2721,6 +2754,8 @@ function addStockManually() {
   product.stockCurrent = Number(product.stockCurrent || 0) + qty;
   persist();
   renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
   renderSaleSelectors();
   renderStockView();
 }
@@ -2761,6 +2796,8 @@ function importStockFromExcelFile(file) {
       });
       persist();
       renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
       renderSaleSelectors();
       renderStockView();
       alert(`Importación de stock finalizada.\nProductos actualizados: ${updated}\nErrores: ${errors.length}${errors.length ? `\n\n${errors.join('\n')}` : ''}`);
@@ -2784,6 +2821,8 @@ function openProductListView() {
   hideProductSubviews();
   productListCard?.classList.remove('hidden');
   renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
 }
 
 function renderImageRetryHint(kind, key, value) {
@@ -3612,6 +3651,7 @@ function snapshotPayload() {
     users: state.users,
     settings: state.settings,
     categories: state.categories,
+    subcategories: state.subcategories || {},
     people: state.people,
     stockConfig: state.stockConfig,
     outflows: state.outflows,
@@ -3761,7 +3801,7 @@ function applyCloudData(data, options = {}) {
   if (!options.force && data.updatedAt <= state.lastSyncAt) return;
   state.lastSyncAt = Number(data.updatedAt || Date.now());
   state.forceLogoutAt = Number(data.forceLogoutAt || 0);
-  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds'].forEach((k) => {
+  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds'].forEach((k) => {
     if (data[k] !== undefined) state[k] = data[k];
   });
   if (state.currentUser && !validateSessionPolicy({ silent: true })) return;
@@ -3789,19 +3829,30 @@ async function startFirebaseRealtimeListener() {
   firebaseRealtimeRootRef = rootRef;
   firebaseChildRefs.forEach((x) => x.ref.off(x.event, x.handler));
   firebaseChildRefs = [];
+  const refreshAfterRealtimeChange = () => {
+    normalizeCloudSettings();
+    normalizeWarehouseData();
+    normalizeDebtPaymentsData();
+    normalizePeopleData();
+    normalizeCashState();
+    syncAppConfig();
+    renderOrdersVisibility();
+    renderProducts(); renderOrders(false); renderSalesHistory(); renderDeletedSales(); renderDebtors(); renderDebtPayments(); renderWarehouse(); renderSummary(); renderCashStatus(); renderHomeActions();
+    applySettings();
+    renderSubCategoryParents();
+    renderSubCategoriesTable();
+  };
   const applyChild = (snap) => {
     const key = String(snap.key || '');
     if (!key) return;
     state[key] = snap.val();
-    const payload = { updatedAt: Date.now() };
-    payload[key] = state[key];
-    applyCloudData({ ...snapshotPayload(), [key]: state[key], updatedAt: Date.now() }, { force: true });
+    refreshAfterRealtimeChange();
   };
   const removeChild = (snap) => {
     const key = String(snap.key || '');
     if (!key) return;
     delete state[key];
-    applyCloudData({ ...snapshotPayload(), updatedAt: Date.now() }, { force: true });
+    refreshAfterRealtimeChange();
   };
   ['child_added','child_changed'].forEach((event) => {
     const handler = (snap) => applyChild(snap);
@@ -3901,7 +3952,6 @@ function showLogin() {
   homeScreen?.classList.add('hidden');
   posScreen?.classList.add('hidden');
   stockScreen?.classList.add('hidden');
-  warehouseScreen?.classList.add('hidden');
   if (loginUserInput) loginUserInput.value = '';
   if (loginPassInput) loginPassInput.value = '';
   setMsg(loginMessage, '');
@@ -3911,7 +3961,6 @@ function showHome() {
   homeScreen?.classList.remove('hidden');
   posScreen?.classList.add('hidden');
   stockScreen?.classList.add('hidden');
-  warehouseScreen?.classList.add('hidden');
   settingsCard?.classList.add('hidden');
   renderHomeActions();
   renderTabsByPermissions();
@@ -3947,6 +3996,7 @@ async function handleLogin() {
   const now = Date.now();
   user.lastActivityAt = now;
   state.currentUser = { username: user.username, loginAt: now, lastActivityAt: now };
+  persistSession();
   saveLocalState();
   beginSessionWatcher();
   if (loginUserInput) loginUserInput.value = '';
@@ -3968,6 +4018,7 @@ function logout(message = '') {
   const u = currentUserRecord();
   if (u) u.lastLogoutAt = Date.now();
   state.currentUser = null;
+  persistSession();
   persist();
   showLogin();
   if (message) setMsg(loginMessage, message, false);
@@ -4364,15 +4415,13 @@ function showStockPage() {
 function showWarehousePage() {
   if (!hasPermission('viewWarehouseButton')) {
     showHome();
-    setMsg(homeMessage, 'No tienes permiso para acceder al módulo Almacén.', false);
+    setMsg(homeMessage, 'No tienes permiso para acceder al módulo de componentes.', false);
     return;
   }
   homeScreen?.classList.add('hidden');
   posScreen?.classList.add('hidden');
   loginScreen?.classList.add('hidden');
   stockScreen?.classList.add('hidden');
-  warehouseScreen?.classList.remove('hidden');
-  if (warehouseStatus) warehouseStatus.textContent = 'Gestión de componentes y recetas.';
   renderWarehouse();
 }
 
@@ -4402,7 +4451,7 @@ function permissionSchema() {
     { key: 'viewSummaryTab', label: 'Puede ver botón Total ventas diarias' },
     { key: 'viewOrders', label: 'Puede ver botón Pedidos' },
     { key: 'viewClosingsTab', label: 'Puede ver botón Cierre de caja' },
-    { key: 'viewWarehouseButton', label: 'Puede ver botón Almacén' },
+    { key: 'viewWarehouseButton', label: 'Puede ver botón componentes' },
     { key: 'viewSalesModeButton', label: 'Puede ver el botón Modo de ventas' },
     { key: 'deleteSales', label: 'Puede eliminar ventas' },
     { key: 'openCash', label: 'Puede abrir caja' },
@@ -4471,10 +4520,9 @@ function normalizeRoute(routeLike) {
 function parentRoute(route) {
   if (route === 'home') return 'home';
   if (route === 'settings') return 'home';
-  if (route in { 'settings/main':1, 'settings/sales':1, 'settings/billing':1, 'settings/users':1, 'settings/users/activity':1, 'stock':1, 'warehouse':1, 'warehouse/gestion':1, 'warehouse/movimientos':1, 'warehouse/movimientos/archivados':1, 'pos/ventas':1, 'pos/pedidos':1, 'pos/configVentas':1, 'pos/deudas':1, 'pos/resumen':1, 'cash/closings':1, 'sales-mode':1 }) return route.startsWith('settings/') ? 'settings' : 'home';
+  if (route in { 'settings/main':1, 'settings/sales':1, 'settings/billing':1, 'settings/users':1, 'settings/users/activity':1, 'stock':1, 'pos/ventas':1, 'pos/pedidos':1, 'pos/configVentas':1, 'pos/deudas':1, 'pos/resumen':1, 'cash/closings':1, 'sales-mode':1 }) return route.startsWith('settings/') ? 'settings' : 'home';
   if (route.startsWith('settings/users/edit/') || route === 'settings/users/new') return 'settings/users';
   if (route === 'settings/users/activity') return 'settings/users';
-  if (route.startsWith('warehouse/movimientos/archivados/')) return 'warehouse/movimientos/archivados';
   if (route === 'pos/productos') return 'settings';
   if (route in { 'pos/productos-lista':1, 'pos/productos-categorias':1, 'pos/productos-combo':1 }) return 'pos/productos';
   if (route in { 'pos/historial':1, 'pos/eliminadas':1, 'pos/salidas':1 }) return 'pos/configVentas';
@@ -4518,18 +4566,16 @@ function hideAllScreens() {
   homeScreen?.classList.add('hidden');
   posScreen?.classList.add('hidden');
   stockScreen?.classList.add('hidden');
-  warehouseScreen?.classList.add('hidden');
   homeScreen?.classList.remove('settings-mode');
 }
 
 function enforceSingleActiveView(route = normalizeRoute(window.location.hash || '#home')) {
-  const activeScreens = [loginScreen, homeScreen, posScreen, stockScreen, warehouseScreen].filter((el) => el && !el.classList.contains('hidden'));
+  const activeScreens = [loginScreen, homeScreen, posScreen, stockScreen].filter((el) => el && !el.classList.contains('hidden'));
   if (activeScreens.length > 1) {
     console.warn('[nav] múltiples vistas activas detectadas, corrigiendo', activeScreens.map((el) => el.id));
     hideAllScreens();
     if (route === 'home') homeScreen?.classList.remove('hidden');
     else if (route === 'stock') stockScreen?.classList.remove('hidden');
-    else if (route === 'warehouse' || route.startsWith('warehouse/')) warehouseScreen?.classList.remove('hidden');
     else if (route.startsWith('pos/') || route === 'cash/closings') posScreen?.classList.remove('hidden');
     else if (route.startsWith('settings')) {
       homeScreen?.classList.remove('hidden');
@@ -4549,7 +4595,6 @@ function renderRoute(route) {
   if (!state.currentUser) return showLogin();
   if (route === 'home') { showHome(); enforceSingleActiveView(route); return; }
   if (route === 'stock') { showStockPage(); enforceSingleActiveView(route); return; }
-  if (route === 'warehouse' || route === 'warehouse/gestion' || route === 'warehouse/movimientos' || route === 'warehouse/movimientos/archivados' || route.startsWith('warehouse/movimientos/archivados/')) { showWarehousePage(); enforceSingleActiveView(route); return; }
   if (route === 'settings') {
     hideAllScreens();
     homeScreen?.classList.remove('hidden');
@@ -4632,11 +4677,17 @@ function showSettingsMenu() {
   settingsMenuCard?.classList.remove('hidden');
 }
 
+async function saveGlobalSettingsToFirebase() {
+  const ref = getFirebaseRealtimeRef('settings');
+  await ref.set(state.settings || {});
+}
+
 async function flushConfigChanges(successMsg) {
   persist();
   applySettings();
   renderOrdersVisibility();
   try {
+    await saveGlobalSettingsToFirebase();
     await syncToCloud();
   } catch (err) {
     console.warn('[config] sync warning', err);
@@ -4662,11 +4713,13 @@ async function saveMainSettings() {
   state.settings.bgColor = bgColorInput?.value || '#f7f7fb';
   state.settings.cardColor = cardColorInput?.value || '#ffffff';
   syncAppConfig();
+  try { await saveGlobalSettingsToFirebase(); } catch (err) { console.error('[settings] save firebase failed', err); }
   const file = logoInput?.files?.[0];
   if (!file) return flushConfigChanges('Configuración guardada.');
   const reader = new FileReader();
   reader.onload = async () => {
     state.settings.logoDataUrl = String(reader.result || '');
+    try { await saveGlobalSettingsToFirebase(); } catch (err) { console.error('[settings] logo save firebase failed', err); }
     await flushConfigChanges('Configuración guardada.');
     if (logoInput) logoInput.value = '';
   };
@@ -4815,10 +4868,12 @@ function openComboCreatorModal() {
     if (!name || price <= 0 || !state.comboBuilderItems.length) { alert('Completa nombre, precio y productos del combo.'); return; }
     if (!state.categories.includes('Combos')) state.categories.push('Combos');
     const ids = state.comboBuilderItems.flatMap((x) => Array.from({ length: x.qty }).map(() => x.id));
-    state.products.push({ id: uid(), category: 'Combos', name, price, hidden: false, combo: ids });
+    state.products.push({ id: uid(), category: 'Combos', subcategoryId: null, name, price, hidden: false, combo: ids });
     state.comboBuilderItems = [];
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
     overlay.remove();
   });
@@ -4848,9 +4903,29 @@ function openProductEditModal(productId) {
     if (!state.categories.includes(category)) state.categories.push(category);
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
     overlay.remove();
   });
+}
+
+
+function renderSubCategoryParents() {
+  if (!subCategoryParentSelect) return;
+  const cats = Array.isArray(state.categories) ? state.categories : [];
+  subCategoryParentSelect.innerHTML = cats.map((c) => `<option value="${c}">${c}</option>`).join('');
+}
+
+function renderSubCategoriesTable() {
+  if (!subCategoriesTable) return;
+  const rows = [];
+  Object.entries(state.subcategories || {}).forEach(([cat, list]) => {
+    (Array.isArray(list) ? list : []).forEach((sub) => {
+      rows.push(`<tr><td>${cat}</td><td>${sub.name || ''}</td><td>${sub.image || '-'}</td><td><button class="secondary" data-sub-edit="${cat}::${sub.id}">Editar</button><button class="danger" data-sub-del="${cat}::${sub.id}">Eliminar</button></td></tr>`);
+    });
+  });
+  subCategoriesTable.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4">Sin subcategorías.</td></tr>';
 }
 
 function wireEvents() {
@@ -4907,7 +4982,6 @@ function wireEvents() {
   closeCashBtnCard?.addEventListener('click', closeCashSession);
   goSalesBtn?.addEventListener('click', () => navigateTo('pos/ventas'));
   goCashClosingsBtn?.addEventListener('click', () => navigateTo('cash/closings'));
-  goWarehouseBtn?.addEventListener('click', () => navigateTo('warehouse'));
   backHomeBtn?.addEventListener('click', () => navigateTo('home', { replace: true }));
   openSettingsBtn?.addEventListener('click', () => navigateTo('settings'));
   document.getElementById('goSalesModeBtn')?.addEventListener('click', () => navigateTo('sales-mode'));
@@ -5043,11 +5117,13 @@ function wireEvents() {
     const name = productName?.value?.trim() || '';
     const price = Number(productPrice?.value || 0);
     if (!category || !name || price <= 0) return;
-    state.products.push({ id: uid(), category, name, price, hidden: false });
+    state.products.push({ id: uid(), category, subcategoryId: null, name, price, hidden: false });
     if (productName) productName.value = '';
     if (productPrice) productPrice.value = '';
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
   });
   addCategoryBtn?.addEventListener('click', () => {
@@ -5057,7 +5133,57 @@ function wireEvents() {
     if (newCategoryInput) newCategoryInput.value = '';
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
+  });
+
+  addSubCategoryBtn?.addEventListener('click', async () => {
+    const cat = subCategoryParentSelect?.value || '';
+    const name = subCategoryNameInput?.value?.trim() || '';
+    const image = subCategoryImageInput?.value?.trim() || '';
+    if (!cat || !name) return;
+    state.subcategories = state.subcategories || {};
+    const list = Array.isArray(state.subcategories[cat]) ? state.subcategories[cat] : [];
+    if (list.some((x) => String(x.name || '').toLowerCase() === name.toLowerCase())) return;
+    list.push({ id: uid(), name, image });
+    state.subcategories[cat] = list;
+    persist();
+    try { await syncToCloud(); } catch {}
+    if (subCategoryNameInput) subCategoryNameInput.value = '';
+    if (subCategoryImageInput) subCategoryImageInput.value = '';
+    renderSubCategoriesTable();
+    renderSaleSelectors();
+  });
+
+  subCategoriesTable?.addEventListener('click', async (e) => {
+    const del = e.target.closest('button[data-sub-del]');
+    const edit = e.target.closest('button[data-sub-edit]');
+    if (del) {
+      const [cat, id] = String(del.dataset.subDel || '').split('::');
+      state.subcategories[cat] = (state.subcategories[cat] || []).filter((x) => String(x.id) !== String(id));
+      state.products = (state.products || []).map((p) => (String(p.subcategoryId || '') === String(id) ? { ...p, subcategoryId: null } : p));
+      persist();
+      try { await syncToCloud(); } catch {}
+      renderSubCategoriesTable();
+      renderProducts();
+      renderSaleSelectors();
+      return;
+    }
+    if (edit) {
+      const [cat, id] = String(edit.dataset.subEdit || '').split('::');
+      const list = state.subcategories[cat] || [];
+      const item = list.find((x) => String(x.id) === String(id));
+      if (!item) return;
+      const name = prompt('Nuevo nombre de subcategoría', item.name || '') || item.name;
+      const image = prompt('URL imagen', item.image || '') || item.image;
+      item.name = String(name || '').trim() || item.name;
+      item.image = String(image || '').trim();
+      persist();
+      try { await syncToCloud(); } catch {}
+      renderSubCategoriesTable();
+      renderSaleSelectors();
+    }
   });
   createComboBtn?.addEventListener('click', () => {
     const name = comboNameInput?.value?.trim() || '';
@@ -5065,7 +5191,7 @@ function wireEvents() {
     const ids = state.comboBuilderItems.length ? state.comboBuilderItems.map((p) => p.id) : (state.comboDraft.length ? state.comboDraft.map((p) => p.id) : Array.from(comboProductsSelect?.selectedOptions || []).map((o) => o.value));
     if (!name || price <= 0 || !ids.length) return;
     if (!state.categories.includes('Combos')) state.categories.push('Combos');
-    state.products.push({ id: uid(), category: 'Combos', name, price, hidden: false, combo: ids });
+    state.products.push({ id: uid(), category: 'Combos', subcategoryId: null, name, price, hidden: false, combo: ids });
     state.comboBuilderItems = [];
     if (comboItemsTable) comboItemsTable.innerHTML = '';
     if (comboNameInput) comboNameInput.value = '';
@@ -5073,6 +5199,8 @@ function wireEvents() {
     if (comboCalculatedTotal) comboCalculatedTotal.textContent = 'Total original: Bs 0.00';
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
   });
   comboProductsSelect?.addEventListener('change', () => {
@@ -5093,6 +5221,8 @@ function wireEvents() {
       p.hidden = !p.hidden;
       persist();
       renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
       renderSaleSelectors();
       return;
     }
@@ -5119,6 +5249,8 @@ function wireEvents() {
       const ok = persistImageChange(() => { if (previous) p.imageUrl = previous; });
       if (!ok) return;
       renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
       renderTouchSaleUi();
       return;
     }
@@ -5127,6 +5259,8 @@ function wireEvents() {
     state.products = state.products.filter((p) => p.id !== del.dataset.prodDel);
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
   });
 
@@ -5150,6 +5284,8 @@ function wireEvents() {
     state.products.forEach((p) => { if (p.category === cat) p.category = 'Todos'; });
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
   });
   addComboItemsBtn?.addEventListener('click', () => { renderComboBuilder(); });
@@ -5359,7 +5495,7 @@ function wireEvents() {
     const componentId = warehouseMoveComponentSelect?.value || '';
     const qty = Math.max(0.01, Number(warehouseMoveQtyInput?.value || 0));
     if (!componentId || !qty) return;
-    registerComponentMove({ componentId, tipo: 'compra', cantidad: qty, descripcion: (warehouseMoveDescInput?.value || '').trim() || 'Compra de almacén' });
+    registerComponentMove({ componentId, tipo: 'compra', cantidad: qty, descripcion: (warehouseMoveDescInput?.value || '').trim() || 'Compra de componentes' });
     if (warehouseMoveDescInput) warehouseMoveDescInput.value = '';
     persist();
     renderWarehouse();
@@ -5406,6 +5542,8 @@ function wireEvents() {
     prod.stockCurrent = Number(prod.stockCurrent || 0) + qty;
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
     renderStockPage();
   });
@@ -5427,6 +5565,8 @@ function wireEvents() {
     product.stockCurrent = 0;
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
     renderStockPage();
   });
@@ -5435,6 +5575,8 @@ function wireEvents() {
     state.products.forEach((p) => { p.stockCurrent = 0; });
     persist();
     renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
     renderSaleSelectors();
     renderStockPage();
   });
@@ -5509,6 +5651,7 @@ async function bootstrap() {
   if (!state.userSalesModes || typeof state.userSalesModes !== 'object') state.userSalesModes = {};
   if (!state.touchUiConfigByUser || typeof state.touchUiConfigByUser !== 'object') state.touchUiConfigByUser = {};
   if (!state.categoryImages || typeof state.categoryImages !== 'object') state.categoryImages = {};
+  if (!state.subcategories || typeof state.subcategories !== 'object') state.subcategories = {};
 
 
   if (!state.orderCounters || typeof state.orderCounters !== 'object') state.orderCounters = {};
@@ -5535,10 +5678,13 @@ async function bootstrap() {
   renderDeletedSales();
   renderDebtPayments();
   renderProducts();
+  renderSubCategoryParents();
+  renderSubCategoriesTable();
   renderOutflows();
   renderWarehouse();
   renderSummary();
   renderSoldProductsList();
+  restoreSessionFromStorage();
   const validSession = Boolean(state.currentUser && currentUserRecord());
     window.addEventListener('hashchange', () => { if (applyingRoute) return; applyRoute(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pullFromCloud({ force: true }); });
