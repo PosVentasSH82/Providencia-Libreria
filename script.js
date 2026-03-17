@@ -805,27 +805,31 @@ async function reserveNextOrderNumber(cashBoxId) {
     if (state.cashSession && state.cashSession.id === cashBoxId) state.cashSession.orderCounter = next + 1;
     return next;
   };
-  const root = cloudRootUrl();
-  if (!root || !cashBoxId) return fallback();
-  const counterPath = encodeURIComponent(cashBoxId);
-  const counterUrl = root.replace(/\.json(\?.*)?$/, `/orderCounters/${counterPath}.json$1`);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const getResp = await fetch(counterUrl, { headers: { 'X-Firebase-ETag': 'true' } });
-    if (!getResp.ok) break;
-    const etag = getResp.headers.get('ETag') || '*';
-    const current = Number(await getResp.json()) || 0;
-    const next = current + 1;
-    const putResp = await fetch(counterUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'if-match': etag },
-      body: JSON.stringify(next)
-    });
-    if (putResp.status === 412) continue;
-    if (!putResp.ok) break;
-    state.orderCounters = state.orderCounters || {};
-    state.orderCounters[cashBoxId] = next;
-    if (state.cashSession && state.cashSession.id === cashBoxId) state.cashSession.orderCounter = next + 1;
-    return next;
+  try {
+    const root = cloudRootUrl();
+    if (!root || !cashBoxId) return fallback();
+    const counterPath = encodeURIComponent(cashBoxId);
+    const counterUrl = root.replace(/\.json(\?.*)?$/, `/orderCounters/${counterPath}.json$1`);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const getResp = await fetch(counterUrl, { headers: { 'X-Firebase-ETag': 'true' } });
+      if (!getResp.ok) break;
+      const etag = getResp.headers.get('ETag') || '*';
+      const current = Number(await getResp.json()) || 0;
+      const next = current + 1;
+      const putResp = await fetch(counterUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'if-match': etag },
+        body: JSON.stringify(next)
+      });
+      if (putResp.status === 412) continue;
+      if (!putResp.ok) break;
+      state.orderCounters = state.orderCounters || {};
+      state.orderCounters[cashBoxId] = next;
+      if (state.cashSession && state.cashSession.id === cashBoxId) state.cashSession.orderCounter = next + 1;
+      return next;
+    }
+  } catch (err) {
+    console.warn('[orders] reserveNextOrderNumber fallback', err?.message || err);
   }
   return fallback();
 }
@@ -3768,13 +3772,37 @@ function mergeCashBoxes(remoteBoxes = [], localBoxes = []) {
   return [...map.values()];
 }
 
+function buildCloudSyncError(message, extras = {}) {
+  const err = new Error(message || 'Error de sincronización en la nube.');
+  Object.assign(err, extras || {});
+  return err;
+}
+
+function describeCloudSyncError(err) {
+  const status = Number(err?.status || 0);
+  if (status === 401 || status === 403) return 'Credenciales inválidas o reglas de Firebase bloquean escritura (401/403).';
+  if (status === 404) return 'URL o ruta de base de datos no existe (404).';
+  if (status === 412) return 'Conflicto de versión de datos (412).';
+  if (status >= 500) return `Servidor respondió con error ${status}.`;
+  if (String(err?.message || '').includes('Failed to fetch')) return 'No se pudo conectar a internet o al host configurado.';
+  return String(err?.message || 'Error desconocido de sincronización.');
+}
+
+async function safeJsonResponse(resp) {
+  try { return await resp.json(); } catch { return null; }
+}
+
 async function syncToCloud(options = {}) {
   const conn = cloudConnection();
-  if (!conn.rootUrl) return;
+  if (!conn.rootUrl) throw buildCloudSyncError('No hay URL de nube configurada.', { code: 'CLOUD_URL_MISSING' });
   try {
     const url = conn.rootUrl;
     const remoteResp = await fetch(url, { headers: { ...conn.headers, 'X-Firebase-ETag': 'true' } });
-    const remoteData = await remoteResp.json();
+    if (!remoteResp.ok) {
+      const remoteText = await remoteResp.text().catch(() => '');
+      throw buildCloudSyncError(`No se pudo leer estado remoto (${remoteResp.status}).`, { status: remoteResp.status, responseText: remoteText });
+    }
+    const remoteData = await safeJsonResponse(remoteResp) || {};
     const remoteEtag = remoteResp.headers.get('ETag');
     const remoteUpdatedAt = Number(remoteData?.updatedAt || 0);
     const payload = snapshotPayload();
@@ -3798,14 +3826,25 @@ async function syncToCloud(options = {}) {
     if (putResp.status === 412) {
       if (Number(options.attempt || 0) < 2) return syncToCloud({ ...options, attempt: Number(options.attempt || 0) + 1 });
       if (syncStatus) syncStatus.textContent = 'Conflicto detectado. Reintenta sincronizar.';
-      throw new Error('sync conflict');
+      throw buildCloudSyncError('Conflicto de sincronización.', { status: 412, code: 'SYNC_CONFLICT' });
     }
-    if (!putResp.ok) throw new Error(`sync put failed: ${putResp.status}`);
+    if (!putResp.ok) {
+      const putText = await putResp.text().catch(() => '');
+      throw buildCloudSyncError(`No se pudo guardar en la nube (${putResp.status}).`, { status: putResp.status, responseText: putText });
+    }
     state.lastSyncAt = Number(payload.updatedAt || Date.now());
+    (state.sales || []).forEach((sale) => {
+      if (sale?.cloudSyncStatus === 'pending') {
+        sale.cloudSyncStatus = 'ok';
+        sale.cloudSyncError = '';
+        sale.cloudSyncLastAttemptAt = Date.now();
+      }
+    });
     saveLocalState();
     if (syncStatus) syncStatus.textContent = 'Sincronización enviada.';
   } catch (err) {
-    if (syncStatus) syncStatus.textContent = 'Error de sincronización.';
+    const detail = describeCloudSyncError(err);
+    if (syncStatus) syncStatus.textContent = `Error de sincronización: ${detail}`;
     throw err;
   }
 }
@@ -4251,13 +4290,25 @@ async function registerSale() {
     confirmed = true;
     Promise.resolve().then(() => pullFromCloud({ force: true })).catch(() => {});
   } catch (err) {
-    console.error('[sale] confirm sync failed', err);
+    const detail = describeCloudSyncError(err);
+    console.error('[sale] confirm sync failed', detail, err);
+    if (syncStatus) syncStatus.textContent = `Venta no confirmada: ${detail}`;
   }
   if (!confirmed) {
-    state.sales = state.sales.filter((x) => x.id !== sale.id);
+    sale.cloudSyncStatus = 'pending';
+    sale.cloudSyncError = String(syncStatus?.textContent || 'Error de sincronización');
+    sale.cloudSyncLastAttemptAt = Date.now();
     persist({ sync: false });
-    return setMsg(saleMessage, 'No se pudo confirmar la venta en la nube. Intenta nuevamente.', false);
+    scheduleCloudSync(2500);
+    renderCart();
+    renderOrders(false);
+    refreshFinancialViews();
+    setMsg(saleMessage, `Venta guardada localmente. Pendiente de nube: ${syncStatus?.textContent || 'reintentando...'}`, false);
+    return;
   }
+  sale.cloudSyncStatus = 'ok';
+  sale.cloudSyncError = '';
+  sale.cloudSyncLastAttemptAt = Date.now();
   renderCart();
   renderOrders(false);
   setMsg(saleMessage, 'Venta registrada correctamente.');
