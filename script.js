@@ -1,34 +1,31 @@
 const state = {
-  products: JSON.parse(localStorage.getItem('cafeteria_products') || '[]'),
-  sales: JSON.parse(localStorage.getItem('cafeteria_sales') || '[]'),
-  deletedSales: JSON.parse(localStorage.getItem('cafeteria_deleted_sales') || '[]'),
-  cashClosings: JSON.parse(localStorage.getItem('cafeteria_cash_closings') || '[]'),
-  cashSession: JSON.parse(localStorage.getItem('cafeteria_cash_session') || 'null'),
-  users: JSON.parse(localStorage.getItem('cafeteria_users') || '[]'),
-  currentUser: JSON.parse(localStorage.getItem('cafeteria_current_user') || 'null'),
-  settings: JSON.parse(localStorage.getItem('cafeteria_settings') || '{"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true}'),
-  categories: JSON.parse(localStorage.getItem('cafeteria_categories') || '[]'),
-  people: JSON.parse(localStorage.getItem('cafeteria_people') || '[]'),
-  stockConfig: JSON.parse(localStorage.getItem('cafeteria_stock_config') || '{"enabled":false,"min":0}'),
-  queuedOrders: JSON.parse(localStorage.getItem('cafeteria_queued_orders') || '[]'),
-  removedPeopleIds: JSON.parse(localStorage.getItem('cafeteria_removed_people_ids') || '[]'),
-  userSalesModes: JSON.parse(localStorage.getItem('cafeteria_user_sales_modes') || '{}'),
-  touchUiConfigByUser: JSON.parse(localStorage.getItem('cafeteria_touch_ui_config_by_user') || '{}'),
-  categoryImages: JSON.parse(localStorage.getItem('cafeteria_category_images') || '{}'),
-  orderCounters: JSON.parse(localStorage.getItem('cafeteria_order_counters') || '{}'),
-  deletedRecordIds: JSON.parse(localStorage.getItem('cafeteria_deleted_record_ids') || '{"cashClosings":[],"sales":[]}')
+  products: [],
+  sales: [],
+  deletedSales: [],
+  cashClosings: [],
+  cashSession: null,
+  users: [],
+  currentUser: null,
+  settings: {"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true},
+  categories: [],
+  people: [],
+  stockConfig: {"enabled":false,"min":0},
+  queuedOrders: [],
+  removedPeopleIds: [],
+  userSalesModes: {},
+  touchUiConfigByUser: {},
+  categoryImages: {},
+  orderCounters: {},
+  deletedRecordIds: {"cashClosings":[],"sales":[]}
 };
 
 let sessionWatchInterval = null;
 const SESSION_INACTIVITY_LIMIT_MS = 3 * 60 * 60 * 1000;
 const MAX_IMAGE_UPLOAD_BYTES = Number.POSITIVE_INFINITY;
 const imageUploadStatus = { product: {}, category: {} };
-const IMAGE_DB_NAME = 'cafeteria_images_db';
-const IMAGE_DB_STORE = 'images';
 const imagePreviewCache = {};
 const imageLoadInFlight = {};
 const imageMissingRefs = {};
-let imageDbPromise = null;
 let scheduledImageUiRefresh = 0;
 
 const $ = (id) => document.getElementById(id);
@@ -342,19 +339,19 @@ let activeOrderId = '';
 let isSubmittingSale = false;
 let saleProceedReady = false;
 state.currentCart = [];
-state.outflows = JSON.parse(localStorage.getItem('cafeteria_outflows') || '[]');
+state.outflows = [];
 state.comboDraft = [];
 state.activeDebtorId = '';
-state.debtPayments = JSON.parse(localStorage.getItem('cafeteria_debt_payments') || '[]');
+state.debtPayments = [];
 state.comboBuilderItems = [];
-state.lastSyncAt = Number(localStorage.getItem('cafeteria_last_sync_at') || '0');
-state.forceLogoutAt = Number(localStorage.getItem('cafeteria_force_logout_at') || '0');
-state.cashBoxes = JSON.parse(localStorage.getItem('cafeteria_cash_boxes') || '[]');
+state.lastSyncAt = 0;
+state.forceLogoutAt = 0;
+state.cashBoxes = [];
 state.selectedClosingIds = [];
 state.generatedClosingsStats = null;
-state.components = JSON.parse(localStorage.getItem('cafeteria_components') || '[]');
-state.componentLinks = JSON.parse(localStorage.getItem('cafeteria_component_links') || '{}');
-state.componentMoves = JSON.parse(localStorage.getItem('cafeteria_component_moves') || '[]');
+state.components = [];
+state.componentLinks = {};
+state.componentMoves = [];
 
 let appConfig = {
   stockActivo: Boolean(state.stockConfig?.enabled),
@@ -382,8 +379,8 @@ let tempConfig = { stockActivo: appConfig.stockActivo, activarPedidos: appConfig
 function syncTempConfigFromApp() {
   tempConfig = { stockActivo: appConfig.stockActivo, activarPedidos: appConfig.activarPedidos };
 }
-state.activeCashBoxId = localStorage.getItem('cafeteria_active_cash_box_id') || '';
-state.systemStatus = localStorage.getItem('cafeteria_system_status') || 'CAJA_CERRADA';
+state.activeCashBoxId = '';
+state.systemStatus = 'CAJA_CERRADA';
 state.salesHistoryMode = 'all';
 
 const SHARED_DB_PATH = 'cafeteria_shared';
@@ -396,7 +393,16 @@ const defaultCloudConfig = {
   cloudAuthQueryKey: 'auth',
   firebaseDbUrl: 'https://libreria-sh-default-rtdb.firebaseio.com',
   firebaseDbToken: 'LmCH5BpmvtD5qOa5tyRQH8oli11o24buDZUmqd1n',
-  firebaseDbPath: SHARED_DB_PATH
+  firebaseDbPath: SHARED_DB_PATH,
+  firebaseConfig: {
+    apiKey: 'AIzaSyBu31FJwbx1XKt2Mj3jU-fgJOLtA_81FWc',
+    authDomain: 'libreria-sh.firebaseapp.com',
+    databaseURL: 'https://libreria-sh-default-rtdb.firebaseio.com',
+    projectId: 'libreria-sh',
+    storageBucket: 'libreria-sh.firebasestorage.app',
+    messagingSenderId: '92864269555',
+    appId: '1:92864269555:web:9c02eee146f3ce35fdfb86'
+  }
 };
 
 const defaultBillingConfig = {
@@ -505,16 +511,6 @@ function formatProductWithComboDetails(item) {
 function uid() { return `${Date.now()}_${Math.floor(Math.random() * 9999)}`; }
 function setMsg(el, txt, ok = true) { if (!el) return; el.textContent = txt; el.className = ok ? 'ok' : 'error'; }
 
-function safeLocalSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-    return true;
-  } catch (err) {
-    console.warn('[localStorage] setItem failed', key, err?.message || err);
-    return false;
-  }
-}
-
 function refreshFinancialViews() {
   renderSalesHistory();
   renderDeletedSales();
@@ -527,44 +523,7 @@ function refreshFinancialViews() {
   renderOutflows();
 }
 
-function productsForLocalPersistence() {
-  return (state.products || []).map((p) => ({ ...p }));
-}
-
-function categoryImagesForLocalPersistence() {
-  return { ...(state.categoryImages || {}) };
-}
-
-function saveLocalState() {
-  safeLocalSet('cafeteria_last_sync_at', String(state.lastSyncAt || 0));
-  safeLocalSet('cafeteria_force_logout_at', String(state.forceLogoutAt || 0));
-  safeLocalSet('cafeteria_cash_boxes', JSON.stringify(state.cashBoxes || []));
-  safeLocalSet('cafeteria_active_cash_box_id', state.activeCashBoxId || '');
-  safeLocalSet('cafeteria_system_status', state.systemStatus || 'CAJA_CERRADA');
-  safeLocalSet('cafeteria_products', JSON.stringify(productsForLocalPersistence()));
-  safeLocalSet('cafeteria_sales', JSON.stringify(state.sales));
-  safeLocalSet('cafeteria_deleted_sales', JSON.stringify(state.deletedSales));
-  safeLocalSet('cafeteria_cash_closings', JSON.stringify(state.cashClosings));
-  safeLocalSet('cafeteria_cash_session', JSON.stringify(state.cashSession));
-  safeLocalSet('cafeteria_users', JSON.stringify(state.users));
-  safeLocalSet('cafeteria_current_user', JSON.stringify(state.currentUser));
-  safeLocalSet('cafeteria_settings', JSON.stringify(state.settings));
-  safeLocalSet('cafeteria_categories', JSON.stringify(state.categories));
-  safeLocalSet('cafeteria_people', JSON.stringify(state.people));
-  safeLocalSet('cafeteria_stock_config', JSON.stringify(state.stockConfig));
-  safeLocalSet('cafeteria_outflows', JSON.stringify(state.outflows));
-  safeLocalSet('cafeteria_debt_payments', JSON.stringify(state.debtPayments));
-  safeLocalSet('cafeteria_components', JSON.stringify(state.components || []));
-  safeLocalSet('cafeteria_component_links', JSON.stringify(state.componentLinks || {}));
-  safeLocalSet('cafeteria_component_moves', JSON.stringify(state.componentMoves || []));
-  safeLocalSet('cafeteria_queued_orders', JSON.stringify(state.queuedOrders || []));
-  safeLocalSet('cafeteria_removed_people_ids', JSON.stringify(state.removedPeopleIds || []));
-  safeLocalSet('cafeteria_user_sales_modes', JSON.stringify(state.userSalesModes || {}));
-  safeLocalSet('cafeteria_touch_ui_config_by_user', JSON.stringify(state.touchUiConfigByUser || {}));
-  safeLocalSet('cafeteria_category_images', JSON.stringify(categoryImagesForLocalPersistence()));
-  safeLocalSet('cafeteria_order_counters', JSON.stringify(state.orderCounters || {}));
-  safeLocalSet('cafeteria_deleted_record_ids', JSON.stringify(state.deletedRecordIds || { cashClosings: [], sales: [] }));
-}
+function saveLocalState() {}
 
 function scheduleCloudSync(delayMs = 1200) {
   if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
@@ -780,59 +739,68 @@ function blobToDataUrl(blob) {
 }
 
 async function migrateCategoryImageRefsToDataUrls() {
-  const entries = Object.entries(state.categoryImages || {}).filter(([, value]) => String(value || '').startsWith('idb:'));
-  if (!entries.length) return false;
-  let changed = false;
-  for (const [category, ref] of entries) {
-    try {
-      const blob = await imageDbGet(String(ref).slice(4));
-      if (!blob) continue;
-      state.categoryImages[category] = await blobToDataUrl(blob);
-      changed = true;
-    } catch {}
-  }
-  if (changed) persist();
-  return changed;
+  return false;
+}
+
+
+function getFirebaseRealtimeRef(path = '') {
+  if (!window.firebase?.database) throw new Error('Firebase Realtime Database SDK no disponible.');
+  const appName = 'cafeteria-realtime';
+  const cfg = { ...(defaultCloudConfig.firebaseConfig || {}), databaseURL: state.settings?.firebaseDbUrl || defaultCloudConfig.firebaseDbUrl };
+  const app = window.firebase.apps.find((a) => a.name === appName) || window.firebase.initializeApp(cfg, appName);
+  const db = window.firebase.database(app);
+  const basePath = state.settings?.firebaseDbPath || SHARED_DB_PATH;
+  const full = path ? `${basePath}/${String(path).replace(/^\/+/, '')}` : basePath;
+  return db.ref(full);
+}
+
+async function commitSaleToFirebaseTransaction(sale, stockMoves = []) {
+  const rootRef = getFirebaseRealtimeRef('');
+  return new Promise((resolve, reject) => {
+    rootRef.transaction((current) => {
+      if (!current || typeof current !== 'object') return current;
+      const sales = Array.isArray(current.sales) ? [...current.sales] : [];
+      if (sales.some((x) => String(x?.id || '') === String(sale.id))) return;
+      const products = Array.isArray(current.products) ? [...current.products] : [];
+      for (const move of (stockMoves || [])) {
+        const idx = products.findIndex((p) => String(p?.id || '') === String(move.id || ''));
+        if (idx < 0) return;
+        const nextStock = Number(products[idx]?.stockCurrent || 0) - Number(move.qty || 0);
+        if (nextStock < 0) return;
+        products[idx] = { ...products[idx], stockCurrent: nextStock };
+      }
+      sales.unshift({ ...sale });
+      const out = { ...current };
+      out.sales = sales;
+      out.products = products;
+      out.updatedAt = Date.now();
+      return out;
+    }, (error, committed, snapshot) => {
+      if (error) return reject(error);
+      if (!committed) return reject(new Error('Transacción de venta no confirmada en Firebase.'));
+      const data = snapshot?.val?.();
+      if (data) applyCloudData(data, { force: true });
+      resolve(true);
+    }, false);
+  });
 }
 
 async function reserveNextOrderNumber(cashBoxId) {
-  const fallback = () => {
-    const lastIssued = Number(state.orderCounters?.[cashBoxId] || 0);
-    const sessionCandidate = Number(state.cashSession?.orderCounter || 1);
-    const next = lastIssued > 0 ? (lastIssued + 1) : (sessionCandidate > 0 ? sessionCandidate : 1);
-    state.orderCounters = state.orderCounters || {};
-    state.orderCounters[cashBoxId] = next;
-    if (state.cashSession && state.cashSession.id === cashBoxId) state.cashSession.orderCounter = next + 1;
-    return next;
-  };
-  try {
-    const root = cloudRootUrl();
-    if (!root || !cashBoxId) return fallback();
-    const counterPath = encodeURIComponent(cashBoxId);
-    const counterUrl = root.replace(/\.json(\?.*)?$/, `/orderCounters/${counterPath}.json$1`);
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const getResp = await fetch(counterUrl, { headers: { 'X-Firebase-ETag': 'true' } });
-      if (!getResp.ok) break;
-      const etag = getResp.headers.get('ETag') || '*';
-      const current = Number(await getResp.json()) || 0;
-      const next = current + 1;
-      const putResp = await fetch(counterUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'if-match': etag },
-        body: JSON.stringify(next)
-      });
-      if (putResp.status === 412) continue;
-      if (!putResp.ok) break;
+  if (!cashBoxId) throw new Error('No hay caja activa para generar correlativo.');
+  const counterRef = getFirebaseRealtimeRef(`orderCounters/${encodeURIComponent(cashBoxId)}`);
+  return new Promise((resolve, reject) => {
+    counterRef.transaction((current) => (Number(current || 0) + 1), (error, committed, snapshot) => {
+      if (error) return reject(error);
+      if (!committed) return reject(new Error('No se pudo reservar correlativo de pedido.'));
+      const next = Number(snapshot?.val?.() || 0);
       state.orderCounters = state.orderCounters || {};
       state.orderCounters[cashBoxId] = next;
       if (state.cashSession && state.cashSession.id === cashBoxId) state.cashSession.orderCounter = next + 1;
-      return next;
-    }
-  } catch (err) {
-    console.warn('[orders] reserveNextOrderNumber fallback', err?.message || err);
-  }
-  return fallback();
+      resolve(next);
+    }, false);
+  });
 }
+
 
 function persist(options = {}) {
   if (state.currentUser && !validateSessionPolicy({ silent: false })) return;
@@ -1329,59 +1297,6 @@ function syncSaleUiModeVisibility() {
   setSaleModeDomVisibility();
 }
 
-function openImageDb() {
-  if (imageDbPromise) return imageDbPromise;
-  imageDbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(IMAGE_DB_NAME, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(IMAGE_DB_STORE)) db.createObjectStore(IMAGE_DB_STORE);
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onclose = () => { imageDbPromise = null; };
-      resolve(db);
-    };
-    req.onerror = () => {
-      imageDbPromise = null;
-      reject(req.error || new Error('No se pudo abrir IndexedDB de imágenes.'));
-    };
-  });
-  return imageDbPromise;
-}
-
-async function imageDbPut(key, blob) {
-  const db = await openImageDb();
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
-    tx.objectStore(IMAGE_DB_STORE).put(blob, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('Error guardando imagen en IndexedDB.'));
-  });
-}
-
-async function imageDbGet(key) {
-  const db = await openImageDb();
-  const out = await new Promise((resolve, reject) => {
-    const tx = db.transaction(IMAGE_DB_STORE, 'readonly');
-    const req = tx.objectStore(IMAGE_DB_STORE).get(key);
-    req.onsuccess = () => resolve(req.result || null);
-    req.onerror = () => reject(req.error || new Error('Error leyendo imagen de IndexedDB.'));
-  });
-  return out;
-}
-
-async function imageDbDelete(key) {
-  if (!key) return;
-  const db = await openImageDb();
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
-    tx.objectStore(IMAGE_DB_STORE).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('Error eliminando imagen de IndexedDB.'));
-  });
-}
-
 function scheduleImageUiRefresh({ products = false, touch = false } = {}) {
   if (scheduledImageUiRefresh) return;
   scheduledImageUiRefresh = window.requestAnimationFrame(() => {
@@ -1391,26 +1306,24 @@ function scheduleImageUiRefresh({ products = false, touch = false } = {}) {
   });
 }
 
-function imageRefKey(value) {
-  return String(value || '').startsWith('idb:') ? String(value).slice(4) : '';
-}
+function imageRefKey(_value) { return ''; }
 
 function clearImageMissingRef(value) {
   const raw = String(value || '');
-  if (!raw || !raw.startsWith('idb:')) return;
+  if (!raw) return;
   delete imageMissingRefs[raw];
 }
 
 function markImageMissingRef(value) {
   const raw = String(value || '');
-  if (!raw || !raw.startsWith('idb:')) return;
+  if (!raw) return;
   const prev = imageMissingRefs[raw] || { attempts: 0, lastAttemptAt: 0, missing: false };
   imageMissingRefs[raw] = { missing: true, attempts: Number(prev.attempts || 0) + 1, lastAttemptAt: Date.now() };
 }
 
 function forceRetryImageRef(value) {
   const raw = String(value || '');
-  if (!raw || !raw.startsWith('idb:')) return;
+  if (!raw) return;
   clearImageMissingRef(raw);
   delete imageLoadInFlight[raw];
   resolveImageSource(raw);
@@ -3833,13 +3746,6 @@ async function syncToCloud(options = {}) {
       throw buildCloudSyncError(`No se pudo guardar en la nube (${putResp.status}).`, { status: putResp.status, responseText: putText });
     }
     state.lastSyncAt = Number(payload.updatedAt || Date.now());
-    (state.sales || []).forEach((sale) => {
-      if (sale?.cloudSyncStatus === 'pending') {
-        sale.cloudSyncStatus = 'ok';
-        sale.cloudSyncError = '';
-        sale.cloudSyncLastAttemptAt = Date.now();
-      }
-    });
     saveLocalState();
     if (syncStatus) syncStatus.textContent = 'Sincronización enviada.';
   } catch (err) {
@@ -3847,6 +3753,64 @@ async function syncToCloud(options = {}) {
     if (syncStatus) syncStatus.textContent = `Error de sincronización: ${detail}`;
     throw err;
   }
+}
+
+
+function applyCloudData(data, options = {}) {
+  if (!data || !data.updatedAt) return;
+  if (!options.force && data.updatedAt <= state.lastSyncAt) return;
+  state.lastSyncAt = Number(data.updatedAt || Date.now());
+  state.forceLogoutAt = Number(data.forceLogoutAt || 0);
+  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds'].forEach((k) => {
+    if (data[k] !== undefined) state[k] = data[k];
+  });
+  if (state.currentUser && !validateSessionPolicy({ silent: true })) return;
+  normalizeCloudSettings();
+  normalizeWarehouseData();
+  normalizeDebtPaymentsData();
+  normalizePeopleData();
+  normalizeCashState();
+  const removedClosings = new Set((state.deletedRecordIds?.cashClosings || []).map((x) => String(x)));
+  const removedSales = new Set((state.deletedRecordIds?.sales || []).map((x) => String(x)));
+  if (removedClosings.size) state.cashClosings = (state.cashClosings || []).filter((x) => !removedClosings.has(String(x?.id || '')));
+  if (removedSales.size) state.sales = (state.sales || []).filter((x) => !removedSales.has(String(x?.id || '')));
+  syncAppConfig();
+  saveLocalState();
+  renderOrdersVisibility();
+  renderProducts(); renderOrders(false); renderSalesHistory(); renderDeletedSales(); renderDebtors(); renderDebtPayments(); renderWarehouse(); renderSummary(); renderCashStatus(); renderHomeActions();
+  cloudHydrated = true;
+}
+
+let firebaseRealtimeRootRef = null;
+let firebaseChildRefs = [];
+async function startFirebaseRealtimeListener() {
+  if (state.settings?.cloudProvider && state.settings.cloudProvider !== 'firebase') return;
+  const rootRef = getFirebaseRealtimeRef('');
+  firebaseRealtimeRootRef = rootRef;
+  firebaseChildRefs.forEach((x) => x.ref.off(x.event, x.handler));
+  firebaseChildRefs = [];
+  const applyChild = (snap) => {
+    const key = String(snap.key || '');
+    if (!key) return;
+    state[key] = snap.val();
+    const payload = { updatedAt: Date.now() };
+    payload[key] = state[key];
+    applyCloudData({ ...snapshotPayload(), [key]: state[key], updatedAt: Date.now() }, { force: true });
+  };
+  const removeChild = (snap) => {
+    const key = String(snap.key || '');
+    if (!key) return;
+    delete state[key];
+    applyCloudData({ ...snapshotPayload(), updatedAt: Date.now() }, { force: true });
+  };
+  ['child_added','child_changed'].forEach((event) => {
+    const handler = (snap) => applyChild(snap);
+    rootRef.on(event, handler);
+    firebaseChildRefs.push({ ref: rootRef, event, handler });
+  });
+  const removedHandler = (snap) => removeChild(snap);
+  rootRef.on('child_removed', removedHandler);
+  firebaseChildRefs.push({ ref: rootRef, event: 'child_removed', handler: removedHandler });
 }
 
 async function pullFromCloud(options = {}) {
@@ -3866,31 +3830,8 @@ async function pullFromCloud(options = {}) {
     }
     const r = await fetch(rootUrl, { headers: { ...conn.headers } });
     const data = await r.json();
-    if (!data || !data.updatedAt) return;
-    if (!options.force && data.updatedAt <= state.lastSyncAt) {
-      return;
-    }
-    state.lastSyncAt = Number(data.updatedAt || Date.now());
-    state.forceLogoutAt = Number(data.forceLogoutAt || 0);
-    ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds'].forEach((k) => {
-      if (data[k] !== undefined) state[k] = data[k];
-    });
-    if (state.currentUser && !validateSessionPolicy({ silent: true })) return;
-    normalizeCloudSettings();
-    normalizeWarehouseData();
-    normalizeDebtPaymentsData();
-    normalizePeopleData();
-    normalizeCashState();
-    const removedClosings = new Set((state.deletedRecordIds?.cashClosings || []).map((x) => String(x)));
-    const removedSales = new Set((state.deletedRecordIds?.sales || []).map((x) => String(x)));
-    if (removedClosings.size) state.cashClosings = (state.cashClosings || []).filter((x) => !removedClosings.has(String(x?.id || '')));
-    if (removedSales.size) state.sales = (state.sales || []).filter((x) => !removedSales.has(String(x?.id || '')));
-  syncAppConfig();
+    applyCloudData(data, { force: options.force });
     console.info('[cloud] estado sincronizado', { activeCashBoxId: state.activeCashBoxId, systemStatus: state.systemStatus });
-    saveLocalState();
-    renderOrdersVisibility();
-    renderProducts(); renderOrders(false); renderSalesHistory(); renderDeletedSales(); renderDebtors(); renderDebtPayments(); renderWarehouse(); renderSummary(); renderCashStatus(); renderHomeActions();
-    cloudHydrated = true;
     const currentRoute = normalizeRoute(window.location.hash || '#home');
     const inSettingsBranch = currentRoute === 'settings' || currentRoute.startsWith('settings/');
     const inPosBranch = currentRoute.startsWith('pos/') || currentRoute === 'cash/closings';
@@ -4261,54 +4202,30 @@ async function registerSale() {
   const orderNumber = await reserveNextOrderNumber(activeCashBoxId);
   const sale = { id: uid(), cashBoxId: activeCashBoxId, orderNumber, createdAt: new Date().toISOString(), user: state.currentUser.username, items: state.currentCart.map((i) => ({ ...i })), total: totals.final, payment, breakdown, debtAmount, debtorId, paymentStatus: debtAmount > 0 ? 'pendiente' : 'realizado', orderStatus: 'pendiente', deliveryItems, carryOverDebt: false };
   sale.invoiceSnapshot = buildInvoiceData(sale);
+  const stockMoves = [];
   if (isStockEnabled()) {
     for (const item of state.currentCart) {
+      stockMoves.push({ id: item.id, qty: Number(item.qty || 0) });
       const p = state.products.find((x) => x.id === item.id);
-      if (!p) continue;
-      const next = Number(p.stockCurrent || 0) - Number(item.qty || 0);
-      p.stockCurrent = next;
-      if (next <= Number(appConfig.stockMinimo || 0)) console.warn('[stock] Producto con stock mínimo', p.name, next);
-      if (Array.isArray(p.combo) && p.combo.length) {
+      if (Array.isArray(p?.combo) && p.combo.length) {
         const req = comboComponentRequirements(p, item.qty);
-        req.forEach((neededQty, componentId) => {
-          const component = state.products.find((x) => x.id === componentId);
-          if (!component) return;
-          const cNext = Number(component.stockCurrent || 0) - Number(neededQty || 0);
-          component.stockCurrent = cNext;
-          if (cNext <= Number(appConfig.stockMinimo || 0)) console.warn('[stock] Producto con stock mínimo', component.name, cNext);
-        });
+        req.forEach((neededQty, componentId) => stockMoves.push({ id: componentId, qty: Number(neededQty || 0) }));
       }
     }
   }
-  applyWarehouseImpactFromSaleItems(sale.items, { reverse: false, saleId: `#${orderNumberLabel(sale.orderNumber)}` });
-  state.sales.unshift(sale);
-  state.currentCart = [];
-  persist({ sync: false });
   let confirmed = false;
   try {
-    await syncToCloud({ attempt: 0 });
+    await commitSaleToFirebaseTransaction(sale, stockMoves);
     confirmed = true;
-    Promise.resolve().then(() => pullFromCloud({ force: true })).catch(() => {});
+    state.currentCart = [];
   } catch (err) {
     const detail = describeCloudSyncError(err);
-    console.error('[sale] confirm sync failed', detail, err);
+    console.error('[sale] confirm transaction failed', detail, err);
     if (syncStatus) syncStatus.textContent = `Venta no confirmada: ${detail}`;
   }
   if (!confirmed) {
-    sale.cloudSyncStatus = 'pending';
-    sale.cloudSyncError = String(syncStatus?.textContent || 'Error de sincronización');
-    sale.cloudSyncLastAttemptAt = Date.now();
-    persist({ sync: false });
-    scheduleCloudSync(2500);
-    renderCart();
-    renderOrders(false);
-    refreshFinancialViews();
-    setMsg(saleMessage, `Venta guardada localmente. Pendiente de nube: ${syncStatus?.textContent || 'reintentando...'}`, false);
-    return;
+    return setMsg(saleMessage, `No se pudo confirmar la venta en Firebase. ${syncStatus?.textContent || 'Intenta nuevamente.'}`, false);
   }
-  sale.cloudSyncStatus = 'ok';
-  sale.cloudSyncError = '';
-  sale.cloudSyncLastAttemptAt = Date.now();
   renderCart();
   renderOrders(false);
   setMsg(saleMessage, 'Venta registrada correctamente.');
@@ -5593,15 +5510,6 @@ async function bootstrap() {
   if (!state.touchUiConfigByUser || typeof state.touchUiConfigByUser !== 'object') state.touchUiConfigByUser = {};
   if (!state.categoryImages || typeof state.categoryImages !== 'object') state.categoryImages = {};
 
-  (state.products || []).forEach((p) => {
-    if (p?.imageUrl && String(p.imageUrl).startsWith('idb:')) delete p.imageUrl;
-    if (!p?.imageUrl && p?.imageDataUrl && !String(p.imageDataUrl).startsWith('data:')) p.imageUrl = p.imageDataUrl;
-    if (p?.imageDataUrl && String(p.imageDataUrl).startsWith('idb:')) delete p.imageDataUrl;
-  });
-  Object.keys(state.categoryImages || {}).forEach((key) => {
-    const raw = String(state.categoryImages[key] || '');
-    if (raw.startsWith('idb:')) delete state.categoryImages[key];
-  });
 
   if (!state.orderCounters || typeof state.orderCounters !== 'object') state.orderCounters = {};
   if (!state.deletedRecordIds || typeof state.deletedRecordIds !== 'object') state.deletedRecordIds = { cashClosings: [], sales: [] };
@@ -5632,12 +5540,11 @@ async function bootstrap() {
   renderSummary();
   renderSoldProductsList();
   const validSession = Boolean(state.currentUser && currentUserRecord());
-  window.addEventListener('storage', (e) => { if (!e.key || !e.key.startsWith('cafeteria_')) return; pullFromCloud({ force: true }); });
-  window.addEventListener('hashchange', () => { if (applyingRoute) return; applyRoute(); });
-  setInterval(() => { if (document.hidden) return; pullFromCloud(); }, CLOUD_POLL_INTERVAL_MS);
+    window.addEventListener('hashchange', () => { if (applyingRoute) return; applyRoute(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pullFromCloud({ force: true }); });
   window.addEventListener('online', () => { pullFromCloud({ force: true }); });
   Promise.resolve().then(() => migrateCategoryImageRefsToDataUrls()).catch(() => {});
+  await startFirebaseRealtimeListener();
   if (state.currentUser && validSession) {
     try { await pullFromCloud({ force: true }); } catch {}
   } else {
