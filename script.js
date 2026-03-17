@@ -299,6 +299,12 @@ const clearDebtPaymentsFilterBtn = $('clearDebtPaymentsFilterBtn');
 const firebaseDbUrlInput = $('firebaseDbUrlInput');
 const firebaseDbTokenInput = $('firebaseDbTokenInput');
 const firebaseDbPathInput = $('firebaseDbPathInput');
+const cloudProviderInput = $('cloudProviderInput');
+const cloudRootUrlInput = $('cloudRootUrlInput');
+const cloudAuthTypeInput = $('cloudAuthTypeInput');
+const cloudAuthHeaderInput = $('cloudAuthHeaderInput');
+const cloudAuthQueryKeyInput = $('cloudAuthQueryKeyInput');
+const saveDatabaseConfigBtn = $('saveDatabaseConfigBtn');
 const syncNowBtn = $('syncNowBtn');
 const syncStatus = $('syncStatus');
 const billingEnabledInput = $('billingEnabledInput');
@@ -383,6 +389,11 @@ state.salesHistoryMode = 'all';
 const SHARED_DB_PATH = 'cafeteria_shared';
 const LEGACY_DB_PATH = 'cafeteria_BaseDatos2';
 const defaultCloudConfig = {
+  cloudProvider: 'firebase',
+  cloudRootUrl: '',
+  cloudAuthType: 'firebase_query',
+  cloudAuthHeader: 'Authorization',
+  cloudAuthQueryKey: 'auth',
   firebaseDbUrl: 'https://libreria-sh-default-rtdb.firebaseio.com',
   firebaseDbToken: 'LmCH5BpmvtD5qOa5tyRQH8oli11o24buDZUmqd1n',
   firebaseDbPath: SHARED_DB_PATH
@@ -443,10 +454,21 @@ function normalizeBillingSettings() {
 
 function normalizeCloudSettings() {
   state.settings = { ...defaultCloudConfig, ...(state.settings || {}) };
+  state.settings.cloudProvider = String(state.settings.cloudProvider || 'firebase').trim().toLowerCase();
+  if (!['firebase', 'custom'].includes(state.settings.cloudProvider)) state.settings.cloudProvider = 'firebase';
+  state.settings.cloudAuthType = String(state.settings.cloudAuthType || 'firebase_query').trim().toLowerCase();
+  if (!['firebase_query', 'query', 'bearer', 'header', 'none'].includes(state.settings.cloudAuthType)) state.settings.cloudAuthType = 'firebase_query';
+  state.settings.cloudAuthHeader = String(state.settings.cloudAuthHeader || 'Authorization').trim() || 'Authorization';
+  state.settings.cloudAuthQueryKey = String(state.settings.cloudAuthQueryKey || 'auth').trim() || 'auth';
+  state.settings.cloudRootUrl = String(state.settings.cloudRootUrl || '').trim();
   if (!String(state.settings.firebaseDbUrl || '').trim()) state.settings.firebaseDbUrl = defaultCloudConfig.firebaseDbUrl;
   if (!String(state.settings.firebaseDbToken || '').trim()) state.settings.firebaseDbToken = defaultCloudConfig.firebaseDbToken;
   const currentPath = String(state.settings.firebaseDbPath || '').trim();
   if (!currentPath || currentPath === LEGACY_DB_PATH) state.settings.firebaseDbPath = SHARED_DB_PATH;
+  if (!state.settings.cloudRootUrl && state.settings.cloudProvider === 'custom') {
+    const base = String(state.settings.firebaseDbUrl || '').trim().replace(/\/$/, '');
+    if (base) state.settings.cloudRootUrl = `${base}/${state.settings.firebaseDbPath || SHARED_DB_PATH}.json`;
+  }
   normalizeBillingSettings();
 }
 
@@ -553,11 +575,51 @@ function scheduleCloudSync(delayMs = 1200) {
 }
 
 
-function cloudRootUrl() {
+function appendQueryParam(url, key, value) {
+  if (!value) return String(url || '');
+  const separator = String(url || '').includes('?') ? '&' : '?';
+  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+function cloudConnection() {
+  const provider = String(state.settings?.cloudProvider || 'firebase').toLowerCase();
+  const token = String(state.settings?.firebaseDbToken || '').trim();
+  const headers = {};
+
+  if (provider === 'custom' && String(state.settings?.cloudRootUrl || '').trim()) {
+    let root = String(state.settings.cloudRootUrl || '').trim();
+    const authType = String(state.settings?.cloudAuthType || 'none').toLowerCase();
+    if (authType === 'query') {
+      root = appendQueryParam(root, String(state.settings?.cloudAuthQueryKey || 'token').trim() || 'token', token);
+    } else if (authType === 'bearer' && token) {
+      headers.Authorization = `Bearer ${token}`;
+    } else if (authType === 'header' && token) {
+      headers[String(state.settings?.cloudAuthHeader || 'Authorization').trim() || 'Authorization'] = token;
+    }
+    return { rootUrl: root, headers, provider: 'custom' };
+  }
+
   const base = String(state.settings?.firebaseDbUrl || '').replace(/\/$/, '');
-  if (!base) return '';
-  const token = state.settings?.firebaseDbToken ? `?auth=${encodeURIComponent(state.settings.firebaseDbToken)}` : '';
-  return `${base}/${state.settings.firebaseDbPath || SHARED_DB_PATH}.json${token}`;
+  if (!base) return { rootUrl: '', headers, provider: 'firebase' };
+  let root = `${base}/${state.settings.firebaseDbPath || SHARED_DB_PATH}.json`;
+  root = appendQueryParam(root, String(state.settings?.cloudAuthQueryKey || 'auth').trim() || 'auth', token);
+  return { rootUrl: root, headers, provider: 'firebase' };
+}
+
+function cloudRootUrl() {
+  return cloudConnection().rootUrl;
+}
+
+function refreshDatabaseConfigUi() {
+  const provider = String(state.settings?.cloudProvider || 'firebase');
+  const isCustom = provider === 'custom';
+  firebaseDbUrlInput?.closest('label')?.classList.toggle('hidden', isCustom);
+  firebaseDbPathInput?.closest('label')?.classList.toggle('hidden', isCustom);
+  cloudRootUrlInput?.closest('label')?.classList.toggle('hidden', !isCustom);
+  cloudAuthTypeInput?.closest('label')?.classList.toggle('hidden', !isCustom);
+  const authType = String(cloudAuthTypeInput?.value || state.settings?.cloudAuthType || 'none');
+  cloudAuthHeaderInput?.closest('label')?.classList.toggle('hidden', !isCustom || authType !== 'header');
+  cloudAuthQueryKeyInput?.closest('label')?.classList.toggle('hidden', (!isCustom && provider !== 'firebase') || (isCustom && authType !== 'query'));
 }
 
 function cloudChildUrl(childPath = '') {
@@ -1652,6 +1714,15 @@ function applySettings() {
       billingLogoCurrentText.textContent = 'Logo actual: No configurado';
     }
   }
+  if (cloudProviderInput) cloudProviderInput.value = state.settings.cloudProvider || 'firebase';
+  if (firebaseDbUrlInput) firebaseDbUrlInput.value = state.settings.firebaseDbUrl || '';
+  if (firebaseDbTokenInput) firebaseDbTokenInput.value = state.settings.firebaseDbToken || '';
+  if (firebaseDbPathInput) firebaseDbPathInput.value = state.settings.firebaseDbPath || SHARED_DB_PATH;
+  if (cloudRootUrlInput) cloudRootUrlInput.value = state.settings.cloudRootUrl || '';
+  if (cloudAuthTypeInput) cloudAuthTypeInput.value = state.settings.cloudAuthType || 'firebase_query';
+  if (cloudAuthHeaderInput) cloudAuthHeaderInput.value = state.settings.cloudAuthHeader || 'Authorization';
+  if (cloudAuthQueryKeyInput) cloudAuthQueryKeyInput.value = state.settings.cloudAuthQueryKey || 'auth';
+  refreshDatabaseConfigUi();
   renderBillingPreview();
   if (state.settings.logoDataUrl && homeLogo && logoPlaceholder) {
     homeLogo.src = state.settings.logoDataUrl;
@@ -1662,6 +1733,28 @@ function applySettings() {
     posHeaderLogo.src = state.settings.logoDataUrl;
     posHeaderLogo.classList.remove('hidden');
   }
+}
+
+function saveDatabaseSettings() {
+  if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+  const provider = String(cloudProviderInput?.value || 'firebase').trim().toLowerCase();
+  state.settings.cloudProvider = ['firebase', 'custom'].includes(provider) ? provider : 'firebase';
+  state.settings.firebaseDbUrl = String(firebaseDbUrlInput?.value || '').trim() || defaultCloudConfig.firebaseDbUrl;
+  state.settings.firebaseDbToken = String(firebaseDbTokenInput?.value || '').trim();
+  state.settings.firebaseDbPath = String(firebaseDbPathInput?.value || '').trim() || SHARED_DB_PATH;
+  state.settings.cloudRootUrl = String(cloudRootUrlInput?.value || '').trim();
+  state.settings.cloudAuthType = String(cloudAuthTypeInput?.value || 'firebase_query').trim().toLowerCase();
+  state.settings.cloudAuthHeader = String(cloudAuthHeaderInput?.value || 'Authorization').trim() || 'Authorization';
+  const defaultQueryKey = state.settings.cloudProvider === 'firebase' ? 'auth' : 'token';
+  state.settings.cloudAuthQueryKey = String(cloudAuthQueryKeyInput?.value || defaultQueryKey).trim() || defaultQueryKey;
+  if (state.settings.cloudProvider === 'firebase') {
+    state.settings.cloudAuthType = 'firebase_query';
+    state.settings.cloudAuthQueryKey = state.settings.cloudAuthQueryKey || 'auth';
+  }
+  normalizeCloudSettings();
+  persist();
+  refreshDatabaseConfigUi();
+  if (syncStatus) syncStatus.textContent = 'Configuración de base de datos guardada.';
 }
 
 function renderCashStatus() {
@@ -3676,11 +3769,11 @@ function mergeCashBoxes(remoteBoxes = [], localBoxes = []) {
 }
 
 async function syncToCloud(options = {}) {
-  if (!state.settings.firebaseDbUrl) return;
+  const conn = cloudConnection();
+  if (!conn.rootUrl) return;
   try {
-    const token = state.settings.firebaseDbToken ? `?auth=${encodeURIComponent(state.settings.firebaseDbToken)}` : '';
-    const url = `${state.settings.firebaseDbUrl.replace(/\/$/, '')}/${state.settings.firebaseDbPath || SHARED_DB_PATH}.json${token}`;
-    const remoteResp = await fetch(url, { headers: { 'X-Firebase-ETag': 'true' } });
+    const url = conn.rootUrl;
+    const remoteResp = await fetch(url, { headers: { ...conn.headers, 'X-Firebase-ETag': 'true' } });
     const remoteData = await remoteResp.json();
     const remoteEtag = remoteResp.headers.get('ETag');
     const remoteUpdatedAt = Number(remoteData?.updatedAt || 0);
@@ -3699,7 +3792,7 @@ async function syncToCloud(options = {}) {
       payload.cashSession = remoteData.cashSession || payload.cashSession;
     }
     if (remoteUpdatedAt && Number(payload.updatedAt || 0) <= remoteUpdatedAt) payload.updatedAt = remoteUpdatedAt + 1;
-    const putHeaders = { 'Content-Type': 'application/json' };
+    const putHeaders = { ...conn.headers, 'Content-Type': 'application/json' };
     if (remoteEtag) putHeaders['if-match'] = remoteEtag;
     const putResp = await fetch(url, { method: 'PUT', headers: putHeaders, body: JSON.stringify(payload) });
     if (putResp.status === 412) {
@@ -3718,21 +3811,21 @@ async function syncToCloud(options = {}) {
 }
 
 async function pullFromCloud(options = {}) {
-  if (!state.settings.firebaseDbUrl) return;
+  const conn = cloudConnection();
+  if (!conn.rootUrl) return;
   const now = Date.now();
   if (!options.force && (now - lastCloudPullAt) < CLOUD_PULL_MIN_INTERVAL_MS) return;
   if (cloudPullInFlight) return cloudPullInFlight;
   cloudPullInFlight = (async () => {
   try {
     lastCloudPullAt = Date.now();
-    const token = state.settings.firebaseDbToken ? `?auth=${encodeURIComponent(state.settings.firebaseDbToken)}` : '';
-    const rootUrl = `${state.settings.firebaseDbUrl.replace(/\/$/, '')}/${state.settings.firebaseDbPath || SHARED_DB_PATH}.json${token}`;
-    if (!options.force) {
+    const rootUrl = conn.rootUrl;
+    if (!options.force && conn.provider === 'firebase') {
       const stampResp = await fetch(rootUrl.replace(/\.json(\?.*)?$/, '/updatedAt.json$1'));
       const remoteStamp = Number(await stampResp.json() || 0);
       if (!remoteStamp || remoteStamp <= Number(state.lastSyncAt || 0)) return;
     }
-    const r = await fetch(rootUrl);
+    const r = await fetch(rootUrl, { headers: { ...conn.headers } });
     const data = await r.json();
     if (!data || !data.updatedAt) return;
     if (!options.force && data.updatedAt <= state.lastSyncAt) {
@@ -4889,8 +4982,13 @@ function wireEvents() {
     applySettings();
     renderBillingPreview();
   });
-  openDatabaseConfigBtn?.classList.add('hidden');
-  syncNowBtn?.addEventListener('click', async () => { try { await syncToCloud(); if (syncStatus) syncStatus.textContent = 'Sincronizado con Firebase.'; } catch {} });
+  cloudProviderInput?.addEventListener('change', () => {
+    if (cloudProviderInput?.value === 'firebase' && cloudAuthTypeInput) cloudAuthTypeInput.value = 'firebase_query';
+    refreshDatabaseConfigUi();
+  });
+  cloudAuthTypeInput?.addEventListener('change', refreshDatabaseConfigUi);
+  saveDatabaseConfigBtn?.addEventListener('click', saveDatabaseSettings);
+  syncNowBtn?.addEventListener('click', async () => { try { await syncToCloud(); if (syncStatus) syncStatus.textContent = 'Sincronización completada.'; } catch {} });
   backFromMainConfigBtn?.addEventListener('click', () => navigateTo(parentRoute(normalizeRoute(window.location.hash || '#home')), { replace: true }));
   backFromUsersConfigBtn?.addEventListener('click', () => navigateTo(parentRoute(normalizeRoute(window.location.hash || '#home')), { replace: true }));
   backFromDatabaseConfigBtn?.addEventListener('click', () => navigateTo(parentRoute(normalizeRoute(window.location.hash || '#home')), { replace: true }));
