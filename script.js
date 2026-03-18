@@ -383,6 +383,8 @@ const billingAutoPrintIndicator = $('billingAutoPrintIndicator');
 const billingAutoPrintToggleActionBtn = $('billingAutoPrintToggleActionBtn');
 const closeCashBtnCard = $('closeCashBtn');
 let activeSaleCategory = '';
+let saleSearchQuery = '';
+let productSortMode = 'category';
 let activeOrderId = '';
 let isSubmittingSale = false;
 let saleProceedReady = false;
@@ -1092,14 +1094,8 @@ function globalCashTotals() {
 }
 
 function ensureSeedData() {
-  if (!Array.isArray(state.categories) || !state.categories.length) state.categories = ['Todos', 'Bebidas', 'Comidas'];
-  if (!state.categories.includes('Todos')) state.categories.unshift('Todos');
-  if (!Array.isArray(state.products) || !state.products.length) {
-    state.products = [
-      { id: uid(), category: 'Bebidas', name: 'Mocochinchi', price: 5, hidden: false },
-      { id: uid(), category: 'Comidas', name: 'Sandwich', price: 12, hidden: false }
-    ];
-  }
+  if (!Array.isArray(state.categories)) state.categories = [];
+  if (!Array.isArray(state.products)) state.products = [];
 }
 
 
@@ -1174,9 +1170,8 @@ function getSubCategoriesForCategory(category) {
 function getSaleSubCategoryOptions(category) {
   const products = getProductsForSaleCategory(category);
   const subMap = new Map(getSubCategoriesForCategory(category).map((sub) => [String(sub.id), sub]));
-  const used = new Set(products.map((p) => String(p.subcategoryId || '')));
+  const used = new Set(products.map((p) => String(p.subcategoryId || '')).filter(Boolean));
   const options = [];
-  if (used.has('')) options.push({ id: '', name: 'Sin subcategoría', image: '' });
   subMap.forEach((sub, id) => {
     if (used.has(id)) options.push({ id, name: sub.name || 'Sin nombre', image: sub.image || '' });
   });
@@ -1185,6 +1180,16 @@ function getSaleSubCategoryOptions(category) {
 
 function getProductsForSaleSelection(category, subcategoryId = '') {
   return getProductsForSaleCategory(category).filter((p) => String(p.subcategoryId || '') === String(subcategoryId || ''));
+}
+
+function getSaleSearchProducts() {
+  const query = String(saleSearchQuery || '').trim().toLowerCase();
+  const base = (state.products || []).filter((p) => !p.hidden).filter((p) => !isStockEnabled() || Number(p.stockCurrent || 0) > 0);
+  if (!query) return [];
+  return base.filter((p) => {
+    if (activeSaleCategory && p.category !== activeSaleCategory) return false;
+    return String(p.name || '').toLowerCase().includes(query);
+  });
 }
 
 function renderProductSubCategoryOptions(category, selected = '') {
@@ -1227,6 +1232,10 @@ function renderCart() {
 
 function renderSaleSelectors() {
   if (!saleCategoryButtons || !saleCategorySelectors) return;
+  const searchProducts = getSaleSearchProducts();
+  if (String(saleSearchQuery || '').trim()) {
+    saleCategoryButtons.innerHTML = activeSaleCategory ? `<button type="button" class="secondary tab active">${activeSaleCategory}</button>` : '<p>Resultados de búsqueda</p>';
+  }
   const cats = [...new Set(state.products.filter((p) => !p.hidden).map((p) => p.category))];
   if (!cats.length) {
     saleCategoryButtons.innerHTML = '<p>Sin categorías.</p>';
@@ -1234,17 +1243,22 @@ function renderSaleSelectors() {
     return;
   }
   if (activeSaleCategory && !cats.includes(activeSaleCategory)) activeSaleCategory = '';
-  saleCategoryButtons.innerHTML = '';
-  cats.forEach((c) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = `secondary tab ${c === activeSaleCategory ? 'active' : ''}`;
-    b.textContent = c;
-    b.addEventListener('click', () => { activeSaleCategory = c; renderSaleSelectors(); });
-    saleCategoryButtons.appendChild(b);
-  });
+  if (!String(saleSearchQuery || '').trim()) {
+    saleCategoryButtons.innerHTML = '';
+    cats.forEach((c) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `secondary tab ${c === activeSaleCategory ? 'active' : ''}`;
+      b.textContent = c;
+      b.addEventListener('click', () => { activeSaleCategory = c; renderSaleSelectors(); });
+      saleCategoryButtons.appendChild(b);
+    });
+  }
   const subOptions = activeSaleCategory ? getSaleSubCategoryOptions(activeSaleCategory) : [];
-  const list = activeSaleCategory ? getProductsForSaleSelection(activeSaleCategory, subOptions.length === 1 ? subOptions[0].id : '') : [];
+  const rootProducts = activeSaleCategory ? getProductsForSaleSelection(activeSaleCategory, '') : [];
+  const list = String(saleSearchQuery || '').trim()
+    ? searchProducts
+    : (activeSaleCategory ? (subOptions.length === 1 && !rootProducts.length ? getProductsForSaleSelection(activeSaleCategory, subOptions[0].id) : rootProducts) : []);
   const renderProductOptions = (items) => items.map((p) => {
     const stock = Number(p.stockCurrent || 0);
     const noStock = isStockEnabled() && stock <= 0;
@@ -1253,14 +1267,16 @@ function renderSaleSelectors() {
     const style = isStockEnabled() ? (noStock ? 'color:#c62f2f;' : (lowStock ? 'color:#b26a00;' : '')) : '';
     return `<option value="${p.id}" ${noStock ? 'disabled' : ''} style="${style}">${p.name}${suffix} · ${money(p.price)}</option>`;
   }).join('');
-  saleCategorySelectors.innerHTML = `<div class="card grid4">${subOptions.length > 1 ? `<label>Subcategoría<select id="catSubCategorySel"><option value="">Selecciona una subcategoría</option>${subOptions.map((sub) => `<option value="${sub.id}">${sub.name}</option>`).join('')}</select></label>` : ''}<label>Producto<select id="catProductSel"><option value="">Selecciona un producto</option>${renderProductOptions(list)}</select></label><label>Cantidad<input id="catQty" type="number" min="1" step="1" value="1" /></label><label>Subtotal<input id="catSub" type="text" readonly value="${money(0)}" /></label><button id="catAdd" class="primary" type="button">Añadir</button></div>`;
+  saleCategorySelectors.innerHTML = `<div class="card grid4">${subOptions.length ? `<label>Subcategoría<select id="catSubCategorySel"><option value="">${rootProducts.length ? 'Productos de categoría' : 'Selecciona una subcategoría'}</option>${subOptions.map((sub) => `<option value="${sub.id}">${sub.name}</option>`).join('')}</select></label>` : ''}<label>Producto<select id="catProductSel"><option value="">Selecciona un producto</option>${renderProductOptions(list)}</select></label><label>Cantidad<input id="catQty" type="number" min="1" step="1" value="1" /></label><label>Subtotal<input id="catSub" type="text" readonly value="${money(0)}" /></label><button id="catAdd" class="primary" type="button">Añadir</button></div>`;
   const subSel = $('catSubCategorySel');
   const sel = $('catProductSel');
   const qty = $('catQty');
   const sub = $('catSub');
   const syncProducts = () => {
-    const selectedSub = subSel ? subSel.value : (subOptions.length === 1 ? String(subOptions[0].id || '') : '');
-    const items = activeSaleCategory ? getProductsForSaleSelection(activeSaleCategory, selectedSub) : [];
+    const selectedSub = subSel ? subSel.value : (subOptions.length === 1 && !rootProducts.length ? String(subOptions[0].id || '') : '');
+    const items = String(saleSearchQuery || '').trim()
+      ? searchProducts
+      : (activeSaleCategory ? getProductsForSaleSelection(activeSaleCategory, selectedSub) : []);
     if (sel) sel.innerHTML = `<option value="">Selecciona un producto</option>${renderProductOptions(items)}`;
     if (sub) sub.value = money(0);
   };
@@ -1372,6 +1388,25 @@ function ensureGeneralCashUi() {
     card.innerHTML = '<h3>Cierres generales</h3><table><thead><tr><th>Fecha inicio</th><th>Fecha fin</th><th>Efectivo</th><th>QR / banco</th><th>Total</th><th>Usuario</th></tr></thead><tbody id="generalCashClosingsTable"></tbody></table>';
     cierresPanel.appendChild(card);
   }
+
+  const ventasPanel = document.getElementById('ventas');
+  if (ventasPanel && !document.getElementById('saleSearchCard')) {
+    const card = document.createElement('div');
+    card.id = 'saleSearchCard';
+    card.className = 'card';
+    card.innerHTML = '<label>🔎 Buscar producto<input id="saleSearchInput" type="text" placeholder="Buscar por nombre..." /></label>';
+    ventasPanel.insertBefore(card, saleFormContainer || null);
+  }
+
+  const productListCardLocal = document.getElementById('productListCard');
+  if (productListCardLocal && !document.getElementById('productSortToolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.id = 'productSortToolbar';
+    toolbar.className = 'grid3';
+    toolbar.innerHTML = '<label>Ordenar por<select id="productSortMode"><option value="category">Categoría</option><option value="name">Producto</option><option value="price">Precio</option></select></label><button id="applyProductSortBtn" class="secondary" type="button">Ordenar</button><span class="muted">Solo afecta la vista.</span>';
+    const table = productListCardLocal.querySelector('table');
+    productListCardLocal.insertBefore(toolbar, table || null);
+  }
 }
 
 function openSalesModeScreen() {
@@ -1444,6 +1479,7 @@ function renderTouchSaleUi() {
   const cfg = getTouchUiConfig();
   const cap = touchGridCapacity();
   const cats = [...new Set(state.products.filter((p) => !p.hidden).map((p) => p.category))];
+  const searchQuery = String(saleSearchQuery || '').trim().toLowerCase();
   state.touchUiState = state.touchUiState || { view: 'categories', category: '', subcategoryId: '', page: 0 };
   const ui = state.touchUiState;
   if (!cats.includes(ui.category)) {
@@ -1459,17 +1495,22 @@ function renderTouchSaleUi() {
   }
   if (ui.view === 'products') {
     const validSub = subOptions.some((sub) => String(sub.id || '') === String(ui.subcategoryId || ''));
-    if (!validSub) {
+    const validRoot = String(ui.subcategoryId || '') === '__root__' && getProductsForSaleSelection(ui.category, '').length > 0;
+    if (!validSub && !validRoot) {
       ui.subcategoryId = '';
       ui.view = subOptions.length > 1 ? 'subcategories' : 'products';
       ui.page = 0;
     }
   }
-  const list = ui.view === 'categories'
-    ? cats
-    : (ui.view === 'subcategories'
-      ? subOptions
-      : getProductsForSaleSelection(ui.category, ui.subcategoryId || (subOptions.length === 1 ? subOptions[0].id : '')));
+  const hasRootProducts = ui.category ? getProductsForSaleSelection(ui.category, '').length > 0 : false;
+  const subcategoryCards = hasRootProducts ? [{ id: '__root__', name: 'Productos de categoría', image: '' }, ...subOptions] : subOptions;
+  const list = searchQuery
+    ? getSaleSearchProducts()
+    : (ui.view === 'categories'
+      ? cats
+      : (ui.view === 'subcategories'
+        ? subcategoryCards
+        : getProductsForSaleSelection(ui.category, ui.subcategoryId === '__root__' ? '' : (ui.subcategoryId || (subOptions.length === 1 && !hasRootProducts ? subOptions[0].id : '')))));
   const pages = Math.max(1, Math.ceil(list.length / cap));
   if (ui.page >= pages) ui.page = 0;
   const pageItems = list.slice(ui.page * cap, (ui.page + 1) * cap);
@@ -1494,14 +1535,18 @@ function renderTouchSaleUi() {
     const stockBadge = lowStock ? `<small class=\"stock-warning\">Stock: ${stock}</small>` : '';
     return `<button class="touch-card ${hasImg ? 'with-image' : 'no-image'} ${lowStock ? 'stock-empty' : ''}" data-touch-prod="${item.id}" type="button">${img}<strong class="touch-card-title">${item.name}</strong><span class="touch-card-price">${money(item.price)}</span>${stockBadge}</button>`;
   };
-  const backButton = ui.view === 'products'
+  const backButton = searchQuery
+    ? '<button id="touchBackBtn" class="secondary" type="button">Limpiar búsqueda</button>'
+    : (ui.view === 'products'
     ? '<button id="touchBackBtn" class="secondary" type="button">Volver a subcategorías</button>'
-    : (ui.view === 'subcategories' ? '<button id="touchBackBtn" class="secondary" type="button">Volver a categorías</button>' : '<span></span>');
+    : (ui.view === 'subcategories' ? '<button id="touchBackBtn" class="secondary" type="button">Volver a categorías</button>' : '<span></span>'));
   host.className = `touch-sales-layout cart-${cfg.cartPosition}`;
   host.innerHTML = `<div class="touch-main"><div class="touch-toolbar">${backButton}<div class="touch-pager"><button id="touchPrevPage" class="secondary" type="button">◀</button><span>Página ${ui.page + 1}/${pages}</span><button id="touchNextPage" class="secondary" type="button">▶</button></div></div><div class="touch-grid" style="--touch-cols:${getTouchUiConfig().grid.split('x')[0]};">${pageItems.map(renderCard).join('')}</div></div><aside class="touch-cart"><h3>Lista de compras</h3><div class="touch-cart-items">${state.currentCart.length ? state.currentCart.map((i) => `<div class="touch-cart-item"><div><strong>${i.name}</strong><small>${money(i.price)} c/u · Total ${money(Number(i.finalSubtotal ?? (i.price*i.qty)))}</small></div><div class="touch-qty"><button data-touch-dec="${i.id}" type="button">-</button><span>${i.qty}</span><button data-touch-inc="${i.id}" type="button">+</button><button data-touch-tools="${i.id}" type="button">🛠</button><button data-touch-rm="${i.id}" type="button">✕</button></div></div>`).join('') : '<p>Sin productos añadidos.</p>'}</div><div class="touch-summary"><p>Subtotal: ${money(saleTotals().gross)}</p><p>Descuento: ${money(saleTotals().discount)}</p><p><strong>Total: ${money(saleTotals().final)}</strong></p></div><button id="touchProceedPayBtn" class="primary" type="button">Proceder con el pago</button><div class="grid2"><button id="touchQueueBtn" class="secondary" type="button">Añadir a la cola</button><button id="touchQueuedBtn" class="secondary" type="button">Ver pedidos pendientes</button></div><div class="touch-finance"><small>Total de caja: ${cashTotalBox?.textContent || money(0)}</small><small>Cambio final más efectivo del día: ${summaryFinalCash?.textContent || money(0)}</small><small>Total de QR del día: ${summaryFinalQr?.textContent || money(0)}</small></div></aside>`;
 
   host.querySelector('#touchBackBtn')?.addEventListener('click', () => {
-    if (ui.view === 'products') {
+    if (searchQuery) {
+      saleSearchQuery = '';
+    } else if (ui.view === 'products') {
       ui.view = subOptions.length > 1 ? 'subcategories' : 'categories';
       if (ui.view === 'categories') {
         ui.category = '';
@@ -1520,8 +1565,9 @@ function renderTouchSaleUi() {
   host.querySelectorAll('[data-touch-cat]').forEach((b) => b.addEventListener('click', () => {
     ui.category = b.dataset.touchCat || '';
     const nextSubOptions = getSaleSubCategoryOptions(ui.category);
-    ui.subcategoryId = nextSubOptions.length === 1 ? String(nextSubOptions[0].id || '') : '';
-    ui.view = nextSubOptions.length > 1 ? 'subcategories' : 'products';
+    const hasCategoryProducts = getProductsForSaleSelection(ui.category, '').length > 0;
+    ui.subcategoryId = nextSubOptions.length === 1 && !hasCategoryProducts ? String(nextSubOptions[0].id || '') : '';
+    ui.view = nextSubOptions.length > 0 ? 'subcategories' : 'products';
     ui.page = 0;
     renderTouchSaleUi();
   }));
@@ -2698,6 +2744,38 @@ function normalizeProductName(value) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function productCategoryExportLabel(product) {
+  const category = String(product?.category || 'Todos').trim() || 'Todos';
+  const sub = findSubCategory(category, product?.subcategoryId);
+  return sub ? `${category}/${String(sub.name || 'Sin nombre').trim()}` : category;
+}
+
+function parseProductCategoryImportLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { category: 'Todos', subcategoryName: '' };
+  const parts = raw.split('/').map((part) => String(part || '').trim()).filter(Boolean);
+  return {
+    category: parts[0] || 'Todos',
+    subcategoryName: parts.slice(1).join('/') || ''
+  };
+}
+
+function ensureImportedSubcategory(category, subcategoryName) {
+  const cleanCategory = String(category || 'Todos').trim() || 'Todos';
+  const cleanSubcategory = String(subcategoryName || '').trim();
+  if (!cleanSubcategory) return null;
+  state.subcategories = state.subcategories || {};
+  const list = Array.isArray(state.subcategories[cleanCategory]) ? state.subcategories[cleanCategory] : [];
+  const existing = list.find((item) => String(item?.name || '').trim().toLowerCase() === cleanSubcategory.toLowerCase());
+  if (existing) {
+    state.subcategories[cleanCategory] = list;
+    return existing.id;
+  }
+  const created = { id: uid(), name: cleanSubcategory, image: '' };
+  state.subcategories[cleanCategory] = [...list, created];
+  return created.id;
+}
+
 function isStockEnabled() {
   return Boolean(appConfig.stockActivo);
 }
@@ -2934,8 +3012,8 @@ function renderWarehouse() {
 
 function exportProductsToExcel() {
   if (!window.XLSX) return alert('No se pudo cargar la librería XLSX.');
-  const rows = (state.products || []).map((p) => ({ PRODUCTO: String(p.name || '').trim(), CATEGORIA: String(p.category || 'Todos').trim(), PRECIO: Number(p.price || 0) }));
-  const ws = XLSX.utils.json_to_sheet(rows, { header: ['PRODUCTO', 'CATEGORIA', 'PRECIO'] });
+  const rows = (state.products || []).map((p) => ({ CATEGORIA: productCategoryExportLabel(p), PRODUCTO: String(p.name || '').trim(), PRECIO: Number(p.price || 0) }));
+  const ws = XLSX.utils.json_to_sheet(rows, { header: ['CATEGORIA', 'PRODUCTO', 'PRECIO'] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'PRODUCTOS');
   XLSX.writeFile(wb, 'productos_pos.xlsx');
@@ -2952,10 +3030,10 @@ function importProductsFromExcelFile(file) {
       const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
       const headers = Object.keys(rows[0] || {});
-      const expected = ['PRODUCTO', 'CATEGORIA', 'PRECIO'];
-      const validHeaders = headers.length === expected.length && expected.every((h) => headers.includes(h));
+      const expected = ['CATEGORIA', 'PRODUCTO', 'PRECIO'];
+      const validHeaders = headers.length === expected.length && expected.every((h) => headers.includes(h)) && expected.every((h, index) => headers[index] === h);
       if (!rows.length || !validHeaders) {
-        alert('Formato inválido. Debe contener exactamente: PRODUCTO | CATEGORIA | PRECIO');
+        alert('Formato inválido. Debe contener exactamente: CATEGORIA | PRODUCTO | PRECIO');
         return;
       }
       let created = 0;
@@ -2964,19 +3042,21 @@ function importProductsFromExcelFile(file) {
       const existingMap = new Map((state.products || []).map((p) => [normalizeProductName(p.name), p]));
       rows.forEach((row, idx) => {
         const productName = String(row.PRODUCTO || '').trim();
-        const category = String(row.CATEGORIA || 'Todos').trim() || 'Todos';
+        const { category, subcategoryName } = parseProductCategoryImportLabel(row.CATEGORIA);
+        const subcategoryId = ensureImportedSubcategory(category, subcategoryName);
         const price = Number(row.PRECIO);
         if (!productName) { errors.push(`Fila ${idx + 2}: PRODUCTO vacío`); return; }
         if (Number.isNaN(price)) { errors.push(`Fila ${idx + 2}: PRECIO inválido`); return; }
         const key = normalizeProductName(productName);
         const found = existingMap.get(key);
         if (!found) {
-          state.products.push({ id: uid(), name: productName, category, price, hidden: false });
+          state.products.push({ id: uid(), name: productName, category, subcategoryId, price, hidden: false });
           existingMap.set(key, state.products[state.products.length - 1]);
           created += 1;
         } else {
           found.name = productName;
           found.category = category;
+          found.subcategoryId = subcategoryId;
           found.price = price;
           updated += 1;
         }
