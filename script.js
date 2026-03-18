@@ -6,7 +6,7 @@ const state = {
   cashSession: null,
   users: [],
   currentUser: null,
-  settings: {"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true},
+  settings: {"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"assets/logo-sh82.png","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true},
   categories: [],
   subcategories: {},
   people: [],
@@ -251,7 +251,6 @@ const addCategoryBtn = $('addCategoryBtn');
 const categoriesTable = $('categoriesTable');
 const subCategoryParentSelect = $('subCategoryParentSelect');
 const subCategoryNameInput = $('subCategoryNameInput');
-const subCategoryImageInput = $('subCategoryImageInput');
 const addSubCategoryBtn = $('addSubCategoryBtn');
 const subCategoriesTable = $('subCategoriesTable');
 const comboNameInput = $('comboNameInput');
@@ -499,6 +498,7 @@ function normalizeCloudSettings() {
   if (!String(state.settings.firebaseDbToken || '').trim()) state.settings.firebaseDbToken = defaultCloudConfig.firebaseDbToken;
   const currentPath = String(state.settings.firebaseDbPath || '').trim();
   if (!currentPath || currentPath === LEGACY_DB_PATH) state.settings.firebaseDbPath = SHARED_DB_PATH;
+  if (!String(state.settings.logoDataUrl || '').trim()) state.settings.logoDataUrl = 'assets/logo-sh82.png';
   if (!state.settings.cloudRootUrl && state.settings.cloudProvider === 'custom') {
     const base = String(state.settings.firebaseDbUrl || '').trim().replace(/\/$/, '');
     if (base) state.settings.cloudRootUrl = `${base}/${state.settings.firebaseDbPath || SHARED_DB_PATH}.json`;
@@ -4917,16 +4917,66 @@ function renderSubCategoryParents() {
   subCategoryParentSelect.innerHTML = cats.map((c) => `<option value="${c}">${c}</option>`).join('');
 }
 
+function subCategoryKey(cat, id) {
+  return `${String(cat || '')}::${String(id || '')}`;
+}
+
+function findSubCategory(cat, id) {
+  const list = Array.isArray(state.subcategories?.[cat]) ? state.subcategories[cat] : [];
+  return list.find((x) => String(x.id) === String(id)) || null;
+}
+
+function openImageUploadForSubCategory(cat, id) {
+  const sub = findSubCategory(cat, id);
+  if (!sub) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.addEventListener('change', () => {
+    const f = input.files?.[0];
+    if (input) input.value = '';
+    const key = subCategoryKey(cat, id);
+    beginImageUpload('subcategory', key, f, async (payload) => {
+      const previous = sub.image || '';
+      try {
+        sub.image = await saveImageFileToStorage(payload.file, previous, {
+          kind: 'category',
+          key,
+          onProgress: (pct) => setImageUploadStatus('subcategory', key, { uploading: true, progress: Math.max(2, Math.min(100, pct)), error: '' })
+        });
+      } catch (err) {
+        sub.image = previous;
+        setImageUploadStatus('subcategory', key, { uploading: false, progress: 0, error: String(err?.message || 'No se pudo subir la imagen.') });
+        setTimeout(() => setImageUploadStatus('subcategory', key, null), 4000);
+        return;
+      }
+      persistImageChange(() => { sub.image = previous; });
+      renderSubCategoriesTable();
+      renderSaleSelectors();
+      renderTouchSaleUi();
+    });
+  });
+  input.click();
+}
+
 function renderSubCategoriesTable() {
   if (!subCategoriesTable) return;
   const rows = [];
   Object.entries(state.subcategories || {}).forEach(([cat, list]) => {
     (Array.isArray(list) ? list : []).forEach((sub) => {
-      rows.push(`<tr><td>${cat}</td><td>${sub.name || ''}</td><td>${sub.image || '-'}</td><td><button class="secondary" data-sub-edit="${cat}::${sub.id}">Editar</button><button class="danger" data-sub-del="${cat}::${sub.id}">Eliminar</button></td></tr>`);
+      const key = subCategoryKey(cat, sub.id);
+      const st = getImageUploadStatus('subcategory', key);
+      const uploadBtnText = st?.uploading ? 'Subiendo...' : 'Subir imagen';
+      const imgSrc = resolveImageSource(sub.image || '');
+      const imageBlock = imgSrc ? `<div class="image-cell"><img class="image-thumb" src="${imgSrc}" alt="${sub.name || ''}" loading="lazy" /></div>` : '<span class="muted">Sin imagen</span>';
+      const err = st?.error ? `<div class="upload-error">${st.error}</div>` : '';
+      const retry = renderImageRetryHint('subcategory', key, sub.image || '');
+      rows.push(`<tr><td>${cat}</td><td>${sub.name || ''}</td><td><button class="secondary" data-sub-img-up="${key}" type="button" ${st?.uploading ? 'disabled' : ''}>${uploadBtnText}</button> <button class="secondary" data-sub-img-del="${key}" type="button">Eliminar imagen</button> <button class="secondary" data-sub-edit="${key}" type="button">Editar nombre</button> <button class="danger" data-sub-del="${key}" type="button">Eliminar subcategoría</button></td><td>${imageBlock}${renderImageUploadProgress('subcategory', key)}${err}${retry}</td></tr>`);
     });
   });
   subCategoriesTable.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="4">Sin subcategorías.</td></tr>';
 }
+
 
 function wireEvents() {
   if (createComboBtn) createComboBtn.classList.add('hidden');
@@ -5141,17 +5191,15 @@ function wireEvents() {
   addSubCategoryBtn?.addEventListener('click', async () => {
     const cat = subCategoryParentSelect?.value || '';
     const name = subCategoryNameInput?.value?.trim() || '';
-    const image = subCategoryImageInput?.value?.trim() || '';
     if (!cat || !name) return;
     state.subcategories = state.subcategories || {};
     const list = Array.isArray(state.subcategories[cat]) ? state.subcategories[cat] : [];
     if (list.some((x) => String(x.name || '').toLowerCase() === name.toLowerCase())) return;
-    list.push({ id: uid(), name, image });
+    list.push({ id: uid(), name, image: '' });
     state.subcategories[cat] = list;
     persist();
     try { await syncToCloud(); } catch {}
     if (subCategoryNameInput) subCategoryNameInput.value = '';
-    if (subCategoryImageInput) subCategoryImageInput.value = '';
     renderSubCategoriesTable();
     renderSaleSelectors();
   });
@@ -5159,6 +5207,25 @@ function wireEvents() {
   subCategoriesTable?.addEventListener('click', async (e) => {
     const del = e.target.closest('button[data-sub-del]');
     const edit = e.target.closest('button[data-sub-edit]');
+    const up = e.target.closest('button[data-sub-img-up]');
+    const rmImg = e.target.closest('button[data-sub-img-del]');
+    if (up) {
+      const [cat, id] = String(up.dataset.subImgUp || '').split('::');
+      openImageUploadForSubCategory(cat, id);
+      return;
+    }
+    if (rmImg) {
+      const [cat, id] = String(rmImg.dataset.subImgDel || '').split('::');
+      const item = findSubCategory(cat, id);
+      if (!item) return;
+      const previous = item.image || '';
+      item.image = '';
+      persistImageChange(() => { item.image = previous; });
+      try { await syncToCloud(); } catch {}
+      renderSubCategoriesTable();
+      renderSaleSelectors();
+      return;
+    }
     if (del) {
       const [cat, id] = String(del.dataset.subDel || '').split('::');
       state.subcategories[cat] = (state.subcategories[cat] || []).filter((x) => String(x.id) !== String(id));
@@ -5172,13 +5239,10 @@ function wireEvents() {
     }
     if (edit) {
       const [cat, id] = String(edit.dataset.subEdit || '').split('::');
-      const list = state.subcategories[cat] || [];
-      const item = list.find((x) => String(x.id) === String(id));
+      const item = findSubCategory(cat, id);
       if (!item) return;
       const name = prompt('Nuevo nombre de subcategoría', item.name || '') || item.name;
-      const image = prompt('URL imagen', item.image || '') || item.image;
       item.name = String(name || '').trim() || item.name;
-      item.image = String(image || '').trim();
       persist();
       try { await syncToCloud(); } catch {}
       renderSubCategoriesTable();
