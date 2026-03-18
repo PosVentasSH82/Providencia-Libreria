@@ -1,29 +1,29 @@
-
-  productos: [],
-  ventas: [],
-  ventas eliminadas: [],
-  Cierres de efectivo: [],
-  cashSession: nulo,
-  usuarios: [],
-  usuarioactual: nulo,
-  configuración: {"título1":Mi Cafetería,"título2":Pantalla principal,"títuloPostítulo":POS Cafetería,"subtítuloPostítulo":Ventas, productos, deudas, cierres y resumen diario.,"logoDataUrl":assets/logo-sh82.png,"colorAcento":#1f7a5c,"colorFondo":#f7f7fb,"colorTarjeta":#ffffff,"tamañoLogo":120,"tamañoTítulo1":32,"tamañoTítulo2":16,"fuenteTítulo1":Inter, system-ui, sans-serif,"fuenteTítulo2":Inter, system-ui, sans-serif,"colorTítulo1":#1d2530,"colorTítulo2":#6f7a86,"tamañoLogoPos":56,"pedidosHabilitados":true},
-  categorías: [],
-  subcategorías: {},
-  gente: [],
-  stockConfig: {"habilitado":falso,"mínimo":0},
-  Órdenes en cola: [],
+const state = {
+  products: [],
+  sales: [],
+  deletedSales: [],
+  cashClosings: [],
+  cashSession: null,
+  users: [],
+  currentUser: null,
+  settings: {"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"assets/logo-sh82.png","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true},
+  categories: [],
+  subcategories: {},
+  people: [],
+  stockConfig: {"enabled":false,"min":0},
+  queuedOrders: [],
   removedPeopleIds: [],
   userSalesModes: {},
   touchUiConfigByUser: {},
   categoryImages: {},
-  Contadores de pedidos: {},
+  orderCounters: {},
   deletedRecordIds: {"cashClosings":[],"sales":[]}
 };
 
-sea ​​sessionWatchInterval = null;
+let sessionWatchInterval = null;
 const SESSION_INACTIVITY_LIMIT_MS = 3 * 60 * 60 * 1000;
 const MAX_IMAGE_UPLOAD_BYTES = Number.POSITIVE_INFINITY;
-const imageUploadStatus = { producto: {}, categoría: {} };
+const imageUploadStatus = { product: {}, category: {} };
 const imagePreviewCache = {};
 const imageLoadInFlight = {};
 const imageMissingRefs = {};
@@ -31,23 +31,43 @@ let scheduledImageUiRefresh = 0;
 
 
 const SESSION_STORAGE_KEY = 'cafeteria_session_user';
+const LOCAL_STATE_KEY = 'cafeteria_app_state_v3';
 
-función persistSession() {
-  intentar {
+function persistSession() {
+  try {
     if (state.currentUser?.username) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ username: state.currentUser.username }));
-    de lo contrario localStorage.removeItem(SESSION_STORAGE_KEY);
-  } atrapar {}
+    else localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {}
 }
 
-función restaurarSesiónDesdeAlmacenamiento() {
-  intentar {
+function restoreSessionFromStorage() {
+  try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    si (!raw) regresar;
-    const datos = JSON.parse(raw);
+    if (!raw) return;
+    const data = JSON.parse(raw);
     const username = String(data?.username || '').trim();
-    si (!nombredeusuario) regresar;
-    estado.usuarioActual = { nombredeusuario, loginAt: Fecha.ahora(), lastActivityAt: Fecha.ahora() };
-  } atrapar {}
+    if (!username) return;
+    state.currentUser = { username, loginAt: Date.now(), lastActivityAt: Date.now() };
+  } catch {}
+}
+
+function loadLocalState() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STATE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return;
+    [
+      'products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig',
+      'outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','forceLogoutAt',
+      'userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings'
+    ].forEach((key) => {
+      if (data[key] !== undefined) state[key] = data[key];
+    });
+    state.lastSyncAt = Number(data.updatedAt || state.lastSyncAt || 0);
+  } catch (err) {
+    console.error('[local] no se pudo restaurar estado local', err);
+  }
 }
 
 
@@ -62,7 +82,7 @@ const loginMessage = $('loginMessage');
 const homeMessage = $('homeMessage');
 const sessionInfo = $('sessionInfo');
 const posSessionInfo = $('posSessionInfo');
-const botónCerrarSesión = $('botónCerrarSesión');
+const logoutBtn = $('logoutBtn');
 const posLogoutBtn = $('posLogoutBtn');
 const goSalesBtn = $('goSalesBtn');
 const startCashBtn = $('startCashBtn');
@@ -77,7 +97,7 @@ const cashCloseResult = $('cashCloseResult');
 const backHomeBtn = $('backHomeBtn');
 const settingsCard = $('settingsCard');
 const closeSettingsScreenBtn = $('closeSettingsScreenBtn');
-const logotipo de inicio = $('logotipo de inicio');
+const homeLogo = $('homeLogo');
 const logoPlaceholder = $('logoPlaceholder');
 const businessName = $('businessName');
 const homeSubtitle = $('homeSubtitle');
@@ -117,29 +137,29 @@ const stockPageImportFileInput = $('stockPageImportFileInput');
 const clearAllStockBtn = $('clearAllStockBtn');
 const warehouseScreen = $('warehouseScreen');
 const backFromWarehouseBtn = $('backFromWarehouseBtn');
-const estadoAlmacén = $('estadoAlmacén');
+const warehouseStatus = $('warehouseStatus');
 const componentNameInput = $('componentNameInput');
 const componentMinInput = $('componentMinInput');
 const createComponentBtn = $('createComponentBtn');
 const warehouseProductSelect = $('warehouseProductSelect');
 const warehouseComponentSelect = $('warehouseComponentSelect');
 const warehouseLinkQtyInput = $('warehouseLinkQtyInput');
-const enlaceComponentBtn = $('enlaceComponentBtn');
+const linkComponentBtn = $('linkComponentBtn');
 const warehouseMoveComponentSelect = $('warehouseMoveComponentSelect');
 const warehouseMoveQtyInput = $('warehouseMoveQtyInput');
 const warehouseMoveDescInput = $('warehouseMoveDescInput');
 const warehouseAddPurchaseBtn = $('warehouseAddPurchaseBtn');
-const almacénAgregarResiduosBtn = $('almacénAgregarResiduosBtn');
-const tablaAlmacén = $('tablaAlmacén');
-const tablaDeMovimientosAlmacén = $('tablaDeMovimientosAlmacén');
+const warehouseAddWasteBtn = $('warehouseAddWasteBtn');
+const warehouseTable = $('warehouseTable');
+const warehouseMovesTable = $('warehouseMovesTable');
 const tabs = document.querySelectorAll('.tab');
 const panels = document.querySelectorAll('.panel');
 const createSaleBtn = $('createSale');
-const mensaje de venta = $('mensaje de venta');
+const saleMessage = $('saleMessage');
 const openNewSaleBtn = $('openNewSaleBtn');
 const saleFormContainer = $('saleFormContainer');
 const saleCategoryButtons = $('saleCategoryButtons');
-const salesCategorySelectors = $('saleCategorySelectors');
+const saleCategorySelectors = $('saleCategorySelectors');
 const cartTable = $('cartTable');
 const saleGrossTotal = $('saleGrossTotal');
 const saleDiscountTotal = $('saleDiscountTotal');
@@ -241,7 +261,7 @@ const productForm = $('productForm');
 const productCategory = $('productCategory');
 const productSubCategory = $('productSubCategory');
 const productName = $('productName');
-const precioProducto = $('precioProducto');
+const productPrice = $('productPrice');
 const productsTable = $('productsTable');
 const productListCard = $('productListCard');
 const openCreateProductFromListBtn = $('openCreateProductFromListBtn');
@@ -380,6 +400,8 @@ state.generatedClosingsStats = null;
 state.components = [];
 state.componentLinks = {};
 state.componentMoves = [];
+state.generalCash = { efectivo: 0, qr: 0, estado: 'CERRADA', openedAt: '', closedAt: '', openedBy: '', closedBy: '', updatedAt: 0 };
+state.generalClosings = [];
 
 let appConfig = {
   stockActivo: Boolean(state.stockConfig?.enabled),
@@ -404,20 +426,20 @@ function syncAppConfig() {
 
 let tempConfig = { stockActivo: appConfig.stockActivo, activarPedidos: appConfig.activarPedidos };
 
-función syncTempConfigFromApp() {
+function syncTempConfigFromApp() {
   tempConfig = { stockActivo: appConfig.stockActivo, activarPedidos: appConfig.activarPedidos };
 }
-estado.activeCashBoxId = '';
+state.activeCashBoxId = '';
 state.systemStatus = 'CAJA_CERRADA';
-estado.salesHistoryMode = 'all';
+state.salesHistoryMode = 'all';
 
 const SHARED_DB_PATH = 'cafeteria_shared';
 const LEGACY_DB_PATH = 'cafeteria_BaseDatos2';
 const defaultCloudConfig = {
-  proveedor de nube: 'firebase',
+  cloudProvider: 'firebase',
   cloudRootUrl: '',
   cloudAuthType: 'firebase_query',
-  cloudAuthHeader: 'Autorización',
+  cloudAuthHeader: 'Authorization',
   cloudAuthQueryKey: 'auth',
   firebaseDbUrl: 'https://libreria-sh-default-rtdb.firebaseio.com',
   firebaseDbToken: 'LmCH5BpmvtD5qOa5tyRQH8oli11o24buDZUmqd1n',
@@ -425,49 +447,49 @@ const defaultCloudConfig = {
   firebaseConfig: {
     apiKey: 'AIzaSyBu31FJwbx1XKt2Mj3jU-fgJOLtA_81FWc',
     authDomain: 'libreria-sh.firebaseapp.com',
-    URL de la base de datos: 'https://libreria-sh-default-rtdb.firebaseio.com',
-    ID del proyecto: 'libreria-sh',
-    depósito de almacenamiento: 'libreria-sh.firebasestorage.app',
+    databaseURL: 'https://libreria-sh-default-rtdb.firebaseio.com',
+    projectId: 'libreria-sh',
+    storageBucket: 'libreria-sh.firebasestorage.app',
     messagingSenderId: '92864269555',
     appId: '1:92864269555:web:9c02eee146f3ce35fdfb86'
   }
 };
 
 const defaultBillingConfig = {
-  habilitado: falso,
+  enabled: false,
   logoDataUrl: '',
-  Título: 'CAFETERÍA SH82',
-  Símbolo de moneda: 'Bs',
-  ancho del papel mm: 80,
-  margenMm: 4,
+  title: 'CAFETERIA SH82',
+  currencySymbol: 'Bs',
+  paperWidthMm: 80,
+  marginMm: 4,
   message1: 'Gracias por su compra',
-  mensaje2: 'SHALOM',
-  Tamaño del logo en mm: 28,
+  message2: 'SHALOM',
+  logoSizeMm: 28,
   titleSizePt: 12,
-  Título en negrita: verdadero,
-  Fuente del título: 'helvetica',
+  titleBold: true,
+  titleFont: 'helvetica',
   logoTitleGapMm: 8,
-  mensaje1SizePt: 9,
-  mensaje1Negrita: falso,
-  mensaje1Fuente: 'helvetica',
+  message1SizePt: 9,
+  message1Bold: false,
+  message1Font: 'helvetica',
   message2SizePt: 9,
-  mensaje2Negrita: falso,
-  mensaje2Fuente: 'helvetica',
-  impresión automática habilitada: falso
+  message2Bold: false,
+  message2Font: 'helvetica',
+  autoPrintEnabled: false
 };
 
-función normalizeBillingSettings() {
+function normalizeBillingSettings() {
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   const merged = { ...defaultBillingConfig, ...(state.settings.billing || {}) };
-  fusionado.habilitado = (tipo de fusionado.habilitado === 'cadena')
+  merged.enabled = (typeof merged.enabled === 'string')
     ? ['1', 'true', 'si', 'sí', 'on'].includes(String(merged.enabled).trim().toLowerCase())
-    : Booleano(fusionado.habilitado);
-  fusionado.paperWidthMm = Math.max(58, Math.min(120, Number(fusionado.paperWidthMm || 80)));
-  fusionado.marginMm = Math.max(0, Math.min(20, Number(fusionado.marginMm || 4)));
-  fusionado.título = String(fusionado.título || defaultBillingConfig.título);
+    : Boolean(merged.enabled);
+  merged.paperWidthMm = Math.max(58, Math.min(120, Number(merged.paperWidthMm || 80)));
+  merged.marginMm = Math.max(0, Math.min(20, Number(merged.marginMm || 4)));
+  merged.title = String(merged.title || defaultBillingConfig.title);
   merged.currencySymbol = String(merged.currencySymbol || defaultBillingConfig.currencySymbol);
-  fusionado.mensaje1 = String(fusionado.mensaje1 || '');
-  fusionado.mensaje2 = String(fusionado.mensaje2 || '');
+  merged.message1 = String(merged.message1 || '');
+  merged.message2 = String(merged.message2 || '');
   merged.logoSizeMm = Math.max(12, Math.min(60, Number(merged.logoSizeMm || 28)));
   merged.titleSizePt = Math.max(9, Math.min(24, Number(merged.titleSizePt || 12)));
   merged.titleBold = merged.titleBold !== false;
@@ -552,7 +574,13 @@ function refreshFinancialViews() {
   renderOutflows();
 }
 
-function saveLocalState() {}
+function saveLocalState() {
+  try {
+    localStorage.setItem(LOCAL_STATE_KEY, JSON.stringify(snapshotPayload()));
+  } catch (err) {
+    console.error('[local] no se pudo guardar estado local', err);
+  }
+}
 
 function scheduleCloudSync(delayMs = 1200) {
   if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
@@ -732,47 +760,47 @@ async function uploadImageToFirebaseStorage({ kind, key, file, previousUrl = '',
   const { storage } = await ensureFirebaseStorageSdk(bucket);
   const ref = storage.ref(path);
   const task = ref.put(optimized.blob, { contentType: optimized.contentType, cacheControl: 'public,max-age=31536000' });
-  esperar conTimeout(nueva Promise((resolver, rechazar) => {
-    tarea.on('state_changed', (snap) => {
-      si (!onProgress) regresar;
+  await withTimeout(new Promise((resolve, reject) => {
+    task.on('state_changed', (snap) => {
+      if (!onProgress) return;
       const total = Number(snap.totalBytes || 0);
       const loaded = Number(snap.bytesTransferred || 0);
       onProgress(total > 0 ? Math.round((loaded / total) * 100) : 0);
     }, (err) => reject(err), () => resolve());
   }), 20000, 'La subida tardó demasiado. Verifica tu conexión o reglas de Firebase Storage.');
   const downloadUrl = await withTimeout(ref.getDownloadURL(), 8000, 'No se pudo obtener URL pública de la imagen.');
-  intentar {
-    Si (previousUrl && previousUrl.includes('/o/')) {
+  try {
+    if (previousUrl && previousUrl.includes('/o/')) {
       const oldPath = decodeURIComponent(previousUrl.split('/o/')[1]?.split('?')[0] || '');
-      si (oldPath) {
-        esperar storage.ref(oldPath).delete();
+      if (oldPath) {
+        await storage.ref(oldPath).delete();
       }
     }
-  } atrapar {}
-  devolver la URL de descarga;
+  } catch {}
+  return downloadUrl;
 }
 
-función asíncrona pullFromCloudWithTimeout(timeoutMs = 1800) {
+async function pullFromCloudWithTimeout(timeoutMs = 1800) {
   const pullPromise = pullFromCloud({ force: true });
   const timeoutPromise = new Promise((resolve) => setTimeout(resolve, Math.max(300, Number(timeoutMs || 1800))));
-  esperar Promise.race([pullPromise, timeoutPromise]);
+  await Promise.race([pullPromise, timeoutPromise]);
 }
 
-función blobToDataUrl(blob) {
-  devolver nueva Promesa((resolver, rechazar) => {
-    const lector = nuevo lector de archivos();
-    lector.onload = () => resolve(String(lector.resultado || ''));
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
     reader.onerror = () => reject(reader.error || new Error('No se pudo convertir imagen.'));
-    lector.readAsDataURL(blob);
+    reader.readAsDataURL(blob);
   });
 }
 
-función asíncrona migrateCategoryImageRefsToDataUrls() {
-  devolver falso;
+async function migrateCategoryImageRefsToDataUrls() {
+  return false;
 }
 
 
-función getFirebaseRealtimeRef(path = '') {
+function getFirebaseRealtimeRef(path = '') {
   if (!window.firebase?.database) throw new Error('Firebase Realtime Database SDK no disponible.');
   const appName = 'cafeteria-realtime';
   const cfg = { ...(defaultCloudConfig.firebaseConfig || {}), databaseURL: state.settings?.firebaseDbUrl || defaultCloudConfig.firebaseDbUrl };
@@ -780,12 +808,12 @@ función getFirebaseRealtimeRef(path = '') {
   const db = window.firebase.database(app);
   const basePath = state.settings?.firebaseDbPath || SHARED_DB_PATH;
   const full = path ? `${basePath}/${String(path).replace(/^\/+/, '')}` : basePath;
-  devolver db.ref(full);
+  return db.ref(full);
 }
 
-función asíncrona commitSaleToFirebaseTransaction(sale, stockMoves = []) {
+async function commitSaleToFirebaseTransaction(sale, stockMoves = []) {
   const rootRef = getFirebaseRealtimeRef('');
-  devolver nueva Promesa((resolver, rechazar) => {
+  return new Promise((resolve, reject) => {
     rootRef.transaction((current) => {
       if (!current || typeof current !== 'object') return current;
       const sales = Array.isArray(current.sales) ? [...current.sales] : [];
@@ -840,7 +868,7 @@ function persist(options = {}) {
 }
 
 function defaultPermissions() {
-  return { openCash: true, closeCash: true, deleteSales: true, accessSettings: true, manageProducts: true, manageCombos: true, editProductPrices: true, viewOrders: true, deleteClosings: true, deleteCashMovements: true, clearDeletedSalesHistory: true, manageUsers: true, viewSalesButton: true, viewSettingsButton: true, viewCloseCashButton: true, viewProductsTab: true, viewConfigVentasTab: true, viewDebtorsTab: true, viewSummaryTab: true, viewClosingsTab: true, viewWarehouseButton: true, viewSalesModeButton: true };
+  return { openCash: true, closeCash: true, deleteSales: true, accessSettings: true, manageProducts: true, manageCombos: true, editProductPrices: true, viewOrders: true, deleteClosings: true, deleteCashMovements: true, clearDeletedSalesHistory: true, manageUsers: true, viewSalesButton: true, viewSettingsButton: true, viewCloseCashButton: true, viewProductsTab: true, viewConfigVentasTab: true, viewDebtorsTab: true, viewSummaryTab: true, viewClosingsTab: true, viewWarehouseButton: true, viewSalesModeButton: true, abrir_cerrar_caja_general: true };
 }
 
 function ensureUsers() {
@@ -877,6 +905,10 @@ function canOpenCash() {
 
 function canCloseCash() {
   return hasPermission('closeCash') || hasPermission('authorizeCash');
+}
+
+function canManageGeneralCash() {
+  return hasPermission('abrir_cerrar_caja_general') || isAdminUser();
 }
 
 function isAdminUser() {
@@ -924,16 +956,16 @@ function markUserActivity(reason = 'actividad') {
   const now = Date.now();
   state.currentUser.lastActivityAt = now;
   const user = currentUserRecord();
-  si (usuario) usuario.lastActivityAt = ahora;
-  guardarEstadoLocal();
+  if (user) user.lastActivityAt = now;
+  saveLocalState();
 }
 
-función touchSessionActivity() {
-  si (!estado.usuarioactual) regresar;
+function touchSessionActivity() {
+  if (!state.currentUser) return;
   validateSessionPolicy({ silent: true });
 }
 
-función humanElapsed(ts) {
+function humanElapsed(ts) {
   const ms = Math.max(0, Date.now() - Number(ts || 0));
   const m = Math.floor(ms / 60000);
   if (m < 1) return 'Hace menos de 1 minuto';
@@ -944,134 +976,183 @@ función humanElapsed(ts) {
   return `Hace ${d} día${d === 1 ? '' : 's'}`;
 }
 
-función validateSessionPolicy({ silent = false } = {}) {
-  Si (!estado.usuarioactual) devuelve verdadero;
-  const usuario = registroUsuarioActual();
-  si (!usuario) {
+function validateSessionPolicy({ silent = false } = {}) {
+  if (!state.currentUser) return true;
+  const user = currentUserRecord();
+  if (!user) {
     logout('Sesión inválida. Vuelve a iniciar sesión.');
-    devolver falso;
+    return false;
   }
-  Si (usuario.habilitado === falso) {
-    usuario.lastLogoutAt = Date.now();
-    guardarEstadoLocal();
+  if (user.enabled === false) {
+    user.lastLogoutAt = Date.now();
+    saveLocalState();
     logout('Usuario inhabilitado por administrador.');
-    devolver falso;
+    return false;
   }
-  const loginAt = Número(state.currentUser.loginAt || 0);
+  const loginAt = Number(state.currentUser.loginAt || 0);
   const forcedAt = Number(state.forceLogoutAt || 0);
-  if (forzado en && iniciar sesión en && iniciar sesión en <= forzado en) {
-    usuario.lastLogoutAt = Date.now();
-    guardarEstadoLocal();
+  if (forcedAt && loginAt && loginAt <= forcedAt) {
+    user.lastLogoutAt = Date.now();
+    saveLocalState();
     logout('La caja fue cerrada globalmente. Debes iniciar sesión nuevamente.');
-    devolver falso;
+    return false;
   }
-  const último = Math.max(
-    Número(usuario.últimaActividadEn || 0),
-    Número(estado.usuarioactual.últimaActividadEn || 0),
-    iniciar sesiónEn
+  const last = Math.max(
+    Number(user.lastActivityAt || 0),
+    Number(state.currentUser.lastActivityAt || 0),
+    loginAt
   );
-  si (último && (Fecha.ahora() - último) >= LÍMITE_DE_INACTIVIDAD_DE_SESIÓN_MS) {
-    usuario.lastLogoutAt = Date.now();
-    guardarEstadoLocal();
+  if (last && (Date.now() - last) >= SESSION_INACTIVITY_LIMIT_MS) {
+    user.lastLogoutAt = Date.now();
+    saveLocalState();
     logout('Sesión expirada por inactividad (3 horas).');
-    devolver falso;
+    return false;
   }
   if (!silent) markUserActivity('request');
-  devolver verdadero;
+  return true;
 }
 
-función beginSessionWatcher() {
-  si (sessionWatchInterval) clearInterval(sessionWatchInterval);
+function beginSessionWatcher() {
+  if (sessionWatchInterval) clearInterval(sessionWatchInterval);
   sessionWatchInterval = setInterval(() => {
-    si (!estado.usuarioactual) regresar;
+    if (!state.currentUser) return;
     validateSessionPolicy({ silent: true });
   }, 60 * 1000);
 }
 
-función normalizarEstadoDelEfectivo() {
+function normalizeCashState() {
   if (!Array.isArray(state.cashBoxes)) state.cashBoxes = [];
+  if (!state.generalCash || typeof state.generalCash !== 'object') state.generalCash = { efectivo: 0, qr: 0, estado: 'CERRADA', openedAt: '', closedAt: '', openedBy: '', closedBy: '', updatedAt: 0 };
+  state.generalCash.efectivo = Math.max(0, Number(state.generalCash.efectivo || 0));
+  state.generalCash.qr = Math.max(0, Number(state.generalCash.qr || 0));
+  state.generalCash.estado = state.generalCash.estado === 'ABIERTA' ? 'ABIERTA' : 'CERRADA';
+  state.generalCash.openedAt = state.generalCash.openedAt || '';
+  state.generalCash.closedAt = state.generalCash.closedAt || '';
+  state.generalCash.openedBy = state.generalCash.openedBy || '';
+  state.generalCash.closedBy = state.generalCash.closedBy || '';
+  state.generalCash.updatedAt = Number(state.generalCash.updatedAt || 0);
+  if (!Array.isArray(state.generalClosings)) state.generalClosings = [];
   const openBoxes = state.cashBoxes.filter((box) => box.estado === 'ABIERTA');
-  Si (openBoxes.length > 1) {
+  if (openBoxes.length > 1) {
     const keep = openBoxes[0];
     state.cashBoxes = state.cashBoxes.map((box, idx) => (idx > 0 && box.estado === 'ABIERTA' ? { ...box, estado: 'CERRADA', fecha_cierre: box.fecha_cierre || new Date().toISOString() } : box));
-    estado.activeCashBoxId = keep.id;
+    state.activeCashBoxId = keep.id;
   }
   const activeCash = getActiveCashBox();
-  si (!activeCash) {
-    estado.activeCashBoxId = '';
+  if (!activeCash) {
+    state.activeCashBoxId = '';
     state.systemStatus = 'CAJA_CERRADA';
-    estado.cashSession = null;
-  } demás {
-    estado.activeCashBoxId = activeCash.id;
+    state.cashSession = null;
+  } else {
+    state.activeCashBoxId = activeCash.id;
     state.systemStatus = 'CAJA_ABIERTA';
-    Si (!state.cashSession || state.cashSession.id !== activeCash.id) {
-      estado.cashSession = { id: activeCash.id, openedAt: activeCash.fecha_apertura, openingCash: Number(activeCash.openingCash || 0), orderCounter: 1 };
+    if (!state.cashSession || state.cashSession.id !== activeCash.id) {
+      state.cashSession = { id: activeCash.id, openedAt: activeCash.fecha_apertura, openingCash: Number(activeCash.openingCash || 0), orderCounter: 1 };
     }
   }
 }
 
-función ensureSeedData() {
+function isGeneralCashOpen() {
+  return String(state.generalCash?.estado || 'CERRADA') === 'ABIERTA';
+}
+
+function activeDailyCashMetrics(cashBoxId = state.activeCashBoxId) {
+  const box = getCashBoxById(cashBoxId);
+  if (!box) return { openingCash: 0, cashIn: 0, qrIn: 0, outCash: 0, inCash: 0, outQr: 0, inQr: 0, netCash: 0, netQr: 0 };
+  const sales = (state.sales || []).filter((sale) => sale.cashBoxId === cashBoxId && !sale.carryOverDebt);
+  const debtPayments = activeDebtPayments().filter((p) => p.cashBoxId === cashBoxId);
+  const cashSales = sales.reduce((a, s) => a + Number(s.breakdown?.cash || 0), 0);
+  const qrSales = sales.reduce((a, s) => a + Number(s.breakdown?.qr || 0), 0);
+  const debtCash = debtPayments.reduce((a, p) => a + Number(p.cashAmount || (p.method === 'efectivo' ? p.amount : 0) || 0), 0);
+  const debtQr = debtPayments.reduce((a, p) => a + Number(p.qrAmount || (p.method === 'qr' ? p.amount : 0) || 0), 0);
+  const moves = (state.outflows || []).filter((o) => o.cashBoxId === cashBoxId && String(o.caja || 'caja_dia') === 'caja_dia' && String(o.tipo || o.direction || '') !== 'transferencia');
+  const outCash = moves.filter((o) => o.direction === 'salida' && o.method === 'efectivo').reduce((a, o) => a + Number(o.amount || 0), 0);
+  const inCash = moves.filter((o) => o.direction === 'entrada' && o.method === 'efectivo').reduce((a, o) => a + Number(o.amount || 0), 0);
+  const outQr = moves.filter((o) => o.direction === 'salida' && o.method === 'qr').reduce((a, o) => a + Number(o.amount || 0), 0);
+  const inQr = moves.filter((o) => o.direction === 'entrada' && o.method === 'qr').reduce((a, o) => a + Number(o.amount || 0), 0);
+  const openingCash = Number(box.openingCash || 0);
+  return {
+    openingCash,
+    cashIn: cashSales + debtCash,
+    qrIn: qrSales + debtQr,
+    outCash,
+    inCash,
+    outQr,
+    inQr,
+    netCash: openingCash + cashSales + debtCash + inCash - outCash,
+    netQr: qrSales + debtQr + inQr - outQr
+  };
+}
+
+function globalCashTotals() {
+  const daily = getActiveCashBox() ? activeDailyCashMetrics() : { netCash: 0, netQr: 0 };
+  const efectivo = Number(state.generalCash?.efectivo || 0) + Number(daily.netCash || 0);
+  const qr = Number(state.generalCash?.qr || 0) + Number(daily.netQr || 0);
+  return { efectivo, qr, total: efectivo + qr };
+}
+
+function ensureSeedData() {
   if (!Array.isArray(state.categories) || !state.categories.length) state.categories = ['Todos', 'Bebidas', 'Comidas'];
   if (!state.categories.includes('Todos')) state.categories.unshift('Todos');
-  Si (!Array.isArray(state.products) || !state.products.length) {
-    estado.productos = [
-      { id: uid(), categoría: 'Bebidas', nombre: 'Mocochinchi', precio: 5, oculto: falso },
-      { id: uid(), categoría: 'Comidas', nombre: 'Sándwich', precio: 12, oculto: falso }
+  if (!Array.isArray(state.products) || !state.products.length) {
+    state.products = [
+      { id: uid(), category: 'Bebidas', name: 'Mocochinchi', price: 5, hidden: false },
+      { id: uid(), category: 'Comidas', name: 'Sandwich', price: 12, hidden: false }
     ];
   }
 }
 
 
-función ensureProductStockDefaults() {
-  estado.productos = (estado.productos || []).map((p) => ({ ...p, stockCurrent: Number(p.stockCurrent || 0) }));
+function ensureProductStockDefaults() {
+  state.products = (state.products || []).map((p) => ({ ...p, stockCurrent: Number(p.stockCurrent || 0) }));
 }
 
 
-función normalizarDatosPersonas() {
+function normalizePeopleData() {
   if (!Array.isArray(state.people)) state.people = [];
   if (!Array.isArray(state.removedPeopleIds)) state.removedPeopleIds = [];
   const removed = new Set(state.removedPeopleIds.map((x) => String(x || '')));
-  estado.personas = estado.personas.filter((p) => p && !removed.has(String(p.id || '')));
+  state.people = state.people.filter((p) => p && !removed.has(String(p.id || '')));
 }
 
-función ensurePeopleData() {
+function ensurePeopleData() {
   if (!Array.isArray(state.people)) state.people = [];
   let changed = false;
-  estado.personas = estado.personas.map((persona) => {
-    si (persona?.id) devolver persona;
-    cambiado = verdadero;
-    return { id: uid(), ...persona };
+  state.people = state.people.map((person) => {
+    if (person?.id) return person;
+    changed = true;
+    return { id: uid(), ...person };
   });
-  si (cambió) guardarEstadoLocal();
+  if (changed) saveLocalState();
 }
 
-función currentSalesMode() {
+function currentSalesMode() {
   const username = state.currentUser?.username || '';
-  Si (!username) devuelve 'generic';
-  Si (!tienePermiso('viewSalesModeButton')) devuelve 'generic';
+  if (!username) return 'generic';
+  if (!hasPermission('viewSalesModeButton')) return 'generic';
   return state.userSalesModes?.[username] === 'touch' ? 'touch' : 'generic';
 }
 
-función getTouchUiConfig() {
+function getTouchUiConfig() {
   const username = state.currentUser?.username || '';
   if (!username) return { grid: '3x3', cartPosition: 'right' };
   const cfg = state.touchUiConfigByUser?.[username] || {};
   const grid = ['2x3','3x2','3x3','4x2','4x3','4x4','2x4','5x3','5x4'].includes(cfg.grid) ? cfg.grid : '3x3';
   const cartPosition = ['left','right','bottom'].includes(cfg.cartPosition) ? cfg.cartPosition : 'right';
-  devolver { cuadrícula, posición del carrito };
+  return { grid, cartPosition };
 }
 
-función setSalesModeForCurrentUser(modo) {
+function setSalesModeForCurrentUser(mode) {
   const username = state.currentUser?.username || '';
-  si (!nombredeusuario) regresar;
+  if (!username) return;
   if (!state.userSalesModes || typeof state.userSalesModes !== 'object') state.userSalesModes = {};
-  estado.userSalesModes[username] = modo === 'touch' ? 'touch' : 'generic';
-  persistir();
+  state.userSalesModes[username] = mode === 'touch' ? 'touch' : 'generic';
+  persist();
 }
 
-función setTouchUiConfigForCurrentUser(patch = {}) {
+function setTouchUiConfigForCurrentUser(patch = {}) {
   const username = state.currentUser?.username || '';
-  si (!nombredeusuario) regresar;
+  if (!username) return;
   if (!state.touchUiConfigByUser || typeof state.touchUiConfigByUser !== 'object') state.touchUiConfigByUser = {};
   const next = { ...getTouchUiConfig(), ...patch };
   state.touchUiConfigByUser[username] = next;
@@ -1129,35 +1210,35 @@ function renderCart() {
     const total = item.price * item.qty;
     const subtotal = total - (total * (item.discountPct || 0) / 100);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${formatProductWithComboDetails(item)}</td><td><input type="number" min="1" step="1" value="${item.qty}" data-id="${item.id}" data-act="qty" /></td><td>${money(item.price)}</td><td>${money(total)}</td><td><input type="number" min="0" max="100" value="${item.discountPct || 0}" data-id="${item.id}" data-act="disc" /></td><td><input type="number" min="0" step="0.01" value="${Number(item.finalSubtotal ?? subtotal).toFixed(2)}" data-id="${item.id}" data-act="subtotal" /></td><td><button class="secondary" data-id="${item.id}" data-act="rm" type="button">Salir</button></td>`;
+    tr.innerHTML = `<td>${formatProductWithComboDetails(item)}</td><td><input type="number" min="1" step="1" value="${item.qty}" data-id="${item.id}" data-act="qty" /></td><td>${money(item.price)}</td><td>${money(total)}</td><td><input type="number" min="0" max="100" value="${item.discountPct || 0}" data-id="${item.id}" data-act="disc" /></td><td><input type="number" min="0" step="0.01" value="${Number(item.finalSubtotal ?? subtotal).toFixed(2)}" data-id="${item.id}" data-act="subtotal" /></td><td><button class="secondary" data-id="${item.id}" data-act="rm" type="button">Quitar</button></td>`;
     cartTable.appendChild(tr);
   });
-  const totales = totalesdeventa();
+  const totals = saleTotals();
   if (saleGrossTotal) saleGrossTotal.textContent = money(totals.gross);
-  si (saleDiscountTotal) saleDiscountTotal.textContent = money(totals.discount);
-  if (ventaFinalTotal) ventaFinalTotal.textContent = dinero(totales.final);
+  if (saleDiscountTotal) saleDiscountTotal.textContent = money(totals.discount);
+  if (saleFinalTotal) saleFinalTotal.textContent = money(totals.final);
   if (mixedQrAutoAmount) mixedQrAutoAmount.value = money(Math.max(0, totals.final - Number(cashAmount?.value || 0)));
-  si (disponibleTotalCaja) disponibleTotalCaja.valor = dinero(totales.final);
+  if (cashTotalDisplay) cashTotalDisplay.value = money(totals.final);
   if (cashChangeDisplay) cashChangeDisplay.value = money(Math.max(0, Number(cashPaidInput?.value || 0) - totals.final));
-  Si (!state.currentCart.length) saleProceedReady = false;
-  Si (currentSalesMode() === 'touch') renderTouchSaleUi();
+  if (!state.currentCart.length) saleProceedReady = false;
+  if (currentSalesMode() === 'touch') renderTouchSaleUi();
   syncSaleSubmitVisibility();
 }
 
-función renderSaleSelectors() {
-  Si (!saleCategoryButtons || !saleCategorySelectors) regresar;
+function renderSaleSelectors() {
+  if (!saleCategoryButtons || !saleCategorySelectors) return;
   const cats = [...new Set(state.products.filter((p) => !p.hidden).map((p) => p.category))];
-  si (!cats.length) {
+  if (!cats.length) {
     saleCategoryButtons.innerHTML = '<p>Sin categorías.</p>';
-    SelectoresCategoríaDeVenta.HTMLInterior = '';
-    devolver;
+    saleCategorySelectors.innerHTML = '';
+    return;
   }
   if (activeSaleCategory && !cats.includes(activeSaleCategory)) activeSaleCategory = '';
   saleCategoryButtons.innerHTML = '';
-  gatos.forEach((c) => {
+  cats.forEach((c) => {
     const b = document.createElement('button');
-    b.type = 'botón';
-    b.className = `pestaña secundaria ${c === activeSaleCategory ? 'active' : ''}`;
+    b.type = 'button';
+    b.className = `secondary tab ${c === activeSaleCategory ? 'active' : ''}`;
     b.textContent = c;
     b.addEventListener('click', () => { activeSaleCategory = c; renderSaleSelectors(); });
     saleCategoryButtons.appendChild(b);
@@ -1231,6 +1312,66 @@ function ensureSalesModeButton() {
   btn.className = 'secondary';
   btn.textContent = 'Modo de ventas';
   actions.appendChild(btn);
+}
+
+function ensureGeneralCashUi() {
+  const actions = homeScreen?.querySelector('.home-actions');
+  if (actions) {
+    if (!document.getElementById('openGeneralCashBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'openGeneralCashBtn';
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.textContent = 'Abrir caja general';
+      actions.insertBefore(btn, startCashBtn || actions.firstChild);
+    }
+    if (!document.getElementById('closeGeneralCashBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'closeGeneralCashBtn';
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.textContent = 'Cerrar caja general';
+      actions.insertBefore(btn, startCashBtn || actions.firstChild);
+    }
+    if (!document.getElementById('homeOutflowsBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'homeOutflowsBtn';
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.textContent = 'Entradas y salidas de caja';
+      actions.insertBefore(btn, openSettingsBtn || null);
+    }
+  }
+
+  const outflowsSection = document.getElementById('salidas');
+  if (goSalidasBtn) goSalidasBtn.textContent = 'Entradas y salidas de caja';
+  const outflowsFormCard = outflowsSection?.querySelector('.card.grid3');
+  if (outflowsFormCard && !document.getElementById('outflowCashBoxType')) {
+    const label = document.createElement('label');
+    label.innerHTML = 'Caja<select id="outflowCashBoxType"><option value="caja_dia">Caja del día</option><option value="caja_general">Caja general</option></select>';
+    outflowsFormCard.insertBefore(label, addOutflowBtn || null);
+  }
+  const outflowsHead = outflowsSection?.querySelector('table thead tr');
+  if (outflowsHead) outflowsHead.innerHTML = '<th>Fecha</th><th>Tipo</th><th>Caja</th><th>Método</th><th>Descripción</th><th>Monto</th><th>Impacto</th><th>Acciones</th>';
+
+  const resumenPanel = document.getElementById('resumen');
+  if (resumenPanel && !document.getElementById('generalCashSummaryWrap')) {
+    const wrap = document.createElement('div');
+    wrap.id = 'generalCashSummaryWrap';
+    wrap.className = 'card';
+    wrap.innerHTML = '<h3>Datos generales de caja</h3><div class="summary-grid"><div class="card"><p>Total efectivo (caja general)</p><strong id="generalCashSummaryEfectivo">Bs 0.00</strong></div><div class="card"><p>Total QR / banco (caja general)</p><strong id="generalCashSummaryQr">Bs 0.00</strong></div><div class="card"><p>Total global</p><strong id="generalCashSummaryTotal">Bs 0.00</strong></div></div>';
+    const firstChild = resumenPanel.querySelector('.summary-grid, .card');
+    resumenPanel.insertBefore(wrap, firstChild || resumenPanel.firstChild);
+  }
+
+  const cierresPanel = document.getElementById('cierres');
+  if (cierresPanel && !document.getElementById('generalCashClosingsCard')) {
+    const card = document.createElement('div');
+    card.id = 'generalCashClosingsCard';
+    card.className = 'card';
+    card.innerHTML = '<h3>Cierres generales</h3><table><thead><tr><th>Fecha inicio</th><th>Fecha fin</th><th>Efectivo</th><th>QR / banco</th><th>Total</th><th>Usuario</th></tr></thead><tbody id="generalCashClosingsTable"></tbody></table>';
+    cierresPanel.appendChild(card);
+  }
 }
 
 function openSalesModeScreen() {
@@ -1459,72 +1600,72 @@ function markImageMissingRef(value) {
   imageMissingRefs[raw] = { missing: true, attempts: Number(prev.attempts || 0) + 1, lastAttemptAt: Date.now() };
 }
 
-función forceRetryImageRef(valor) {
-  const raw = String(valor || '');
-  si (!raw) regresar;
+function forceRetryImageRef(value) {
+  const raw = String(value || '');
+  if (!raw) return;
   clearImageMissingRef(raw);
-  eliminar imageLoadInFlight[raw];
-  resolverImageSource(raw);
-  scheduleImageUiRefresh({ productos: verdadero, toque: verdadero });
+  delete imageLoadInFlight[raw];
+  resolveImageSource(raw);
+  scheduleImageUiRefresh({ products: true, touch: true });
 }
 
-función resolveImageSource(valor) {
+function resolveImageSource(value) {
   const raw = String(value || '').trim();
-  si (!raw) devuelve '';
+  if (!raw) return '';
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw;
-  devolver '';
+  return '';
 }
 
-función asíncrona saveImageFileToStorage(archivo, valoranterior = '', opciones = {}) {
-  const tipo = opciones.tipo || 'producto';
+async function saveImageFileToStorage(file, previousValue = '', options = {}) {
+  const kind = options.kind || 'product';
   const key = options.key || uid();
-  intentar {
+  try {
     return await uploadImageToFirebaseStorage({
-      amable,
-      llave,
-      archivo,
-      URL anterior: valor anterior,
+      kind,
+      key,
+      file,
+      previousUrl: previousValue,
       onProgress: options.onProgress || null
     });
-  } capturar (error) {
+  } catch (err) {
     const optimized = await optimizeImageForUpload(file, { maxSize: kind === 'category' ? 400 : 300 });
-    devolver blobToDataUrl(optimized.blob);
+    return blobToDataUrl(optimized.blob);
   }
 }
 
-función imageUploadKey(tipo, clave) {
-  devolver `${kind}:${String(key || '')}`;
+function imageUploadKey(kind, key) {
+  return `${kind}:${String(key || '')}`;
 }
 
-función setImageUploadStatus(kind, key, patch = null) {
+function setImageUploadStatus(kind, key, patch = null) {
   const map = imageUploadStatus[kind] || {};
-  si (!parche) {
-    eliminar mapa[imageUploadKey(tipo, clave)];
-  } demás {
+  if (!patch) {
+    delete map[imageUploadKey(kind, key)];
+  } else {
     const prev = map[imageUploadKey(kind, key)] || {};
     map[imageUploadKey(kind, key)] = { ...prev, ...patch };
   }
-  imageUploadStatus[tipo] = mapa;
-  scheduleImageUiRefresh({ productos: verdadero });
+  imageUploadStatus[kind] = map;
+  scheduleImageUiRefresh({ products: true });
 }
 
-función obtenerEstadoSubidaDeImagen(tipo, clave) {
-  devolver imageUploadStatus[kind]?.[imageUploadKey(kind, key)] || null;
+function getImageUploadStatus(kind, key) {
+  return imageUploadStatus[kind]?.[imageUploadKey(kind, key)] || null;
 }
 
-función validararchivoimagen(archivo) {
+function validateImageFile(file) {
   if (!file) return 'No se seleccionó archivo.';
-  const nombre = String(archivo.nombre || '').toLowerCase();
-  const tipo = String(archivo.tipo || '').toLowerCase();
+  const name = String(file.name || '').toLowerCase();
+  const type = String(file.type || '').toLowerCase();
   const extOk = /\.(jpg|jpeg|png)$/.test(name);
   const mimeOk = ['image/jpeg', 'image/jpg', 'image/png', 'image/pjpeg'].includes(type) || type.startsWith('image/');
   if (!(extOk || mimeOk)) return 'Archivo inválido. Solo se permiten JPG, JPEG y PNG.';
-  devolver '';
+  return '';
 }
 
-función renderImageUploadProgress(tipo, clave) {
+function renderImageUploadProgress(kind, key) {
   const st = getImageUploadStatus(kind, key);
-  si (!st || !st.uploading) devuelve '';
+  if (!st || !st.uploading) return '';
   const pct = Math.max(0, Math.min(100, Math.round(Number(st.progress || 0))));
   return `<div class="upload-progress-wrap"><div class="upload-progress-label">Subiendo... ${pct}%</div><div class="upload-progress"><span style="width:${pct}%"></span></div></div>`;
 }
@@ -1698,20 +1839,20 @@ function openOrderDetails(orderId) {
   if (deliveredOrderItemsTable) deliveredOrderItemsTable.innerHTML = done.length ? done.map((i) => `<tr><td>${i.name}</td><td>${i.deliveredBy || '-'}</td></tr>`).join('') : '<tr><td colspan="2">Sin entregados.</td></tr>';
 }
 
-función applySettings() {
+function applySettings() {
   businessName && (businessName.textContent = state.settings.title1 || 'Mi Cafetería');
   homeSubtitle && (homeSubtitle.textContent = state.settings.title2 || 'Pantalla principal');
   posTitle && (posTitle.textContent = `Ventas - ${state.settings.title1 || 'Mi Cafetería'}`);
   posSubtitle && (posSubtitle.textContent = state.settings.posSubtitle || 'Ventas, productos, deudas, cierres y resumen diario.');
-  const raíz = documento.documentElement;
+  const root = document.documentElement;
   if (state.settings.accentColor) root.style.setProperty('--accent', state.settings.accentColor);
   if (state.settings.bgColor) root.style.setProperty('--bg', state.settings.bgColor);
   if (state.settings.cardColor) root.style.setProperty('--card', state.settings.cardColor);
-  si (nombreempresa) {
+  if (businessName) {
     businessName.style.fontSize = `${Number(state.settings.title1Size || 32)}px`;
     businessName.style.fontFamily = state.settings.title1Font || 'Inter, system-ui, sans-serif';
   }
-  si (homeSubtitle) {
+  if (homeSubtitle) {
     homeSubtitle.style.fontSize = `${Number(state.settings.title2Size || 16)}px`;
     homeSubtitle.style.fontFamily = state.settings.title2Font || 'Inter, system-ui, sans-serif';
   }
@@ -1719,10 +1860,10 @@ función applySettings() {
   if (homeSubtitle) homeSubtitle.style.color = state.settings.title2Color || '#6f7a86';
   if (homeLogo && state.settings.logoSize) homeLogo.style.width = `${Number(state.settings.logoSize || 120)}px`;
   if (posHeaderLogo) posHeaderLogo.style.width = `${Number(state.settings.posLogoSize || 56)}px`;
-  si (title1Input) title1Input.value = state.settings.title1 || '';
+  if (title1Input) title1Input.value = state.settings.title1 || '';
   if (title2Input) title2Input.value = state.settings.title2 || '';
-  if (posTitleInput) posTitleInput.value = estado.configuración.posTitle || '';
-  si (posSubtitleInput) posSubtitleInput.value = state.settings.posSubtitle || '';
+  if (posTitleInput) posTitleInput.value = state.settings.posTitle || '';
+  if (posSubtitleInput) posSubtitleInput.value = state.settings.posSubtitle || '';
   if (logoSizeInput) logoSizeInput.value = String(Number(state.settings.logoSize || 120));
   if (posLogoSizeInput) posLogoSizeInput.value = String(Number(state.settings.posLogoSize || 56));
   if (title1SizeInput) title1SizeInput.value = String(Number(state.settings.title1Size || 32));
@@ -1738,10 +1879,10 @@ función applySettings() {
   syncTempConfigFromApp();
   if (stockMinInput) stockMinInput.value = String(Number(appConfig.stockMinimo || 0));
   if (salesConfigStatus) salesConfigStatus.textContent = `Stock: ${appConfig.stockActivo ? 'ACTIVO' : 'INACTIVO'} · Pedidos: ${appConfig.activarPedidos ? 'ACTIVO' : 'INACTIVO'}`;
-  const facturación = normalizarConfiguraciónDeFacturación();
+  const billing = normalizeBillingSettings();
   if (billingEnabledInput) billingEnabledInput.checked = Boolean(billing.enabled);
-  si (billingTitleInput) billingTitleInput.value = billing.title || '';
-  si (billingCurrencyInput) billingCurrencyInput.value = billing.currencySymbol || 'Bs';
+  if (billingTitleInput) billingTitleInput.value = billing.title || '';
+  if (billingCurrencyInput) billingCurrencyInput.value = billing.currencySymbol || 'Bs';
   if (billingPaperWidthInput) billingPaperWidthInput.value = String(Number(billing.paperWidthMm || 80));
   if (billingMarginInput) billingMarginInput.value = String(Number(billing.marginMm || 4));
   if (billingMessage1Input) billingMessage1Input.value = billing.message1 || '';
@@ -1762,15 +1903,15 @@ función applySettings() {
   if (billingAutoPrintInput) billingAutoPrintInput.checked = Boolean(billing.autoPrintEnabled);
   if (billingAutoPrintIndicator) billingAutoPrintIndicator.textContent = `Estado actual: ${billing.autoPrintEnabled ? 'ACTIVADO' : 'DESACTIVADO'}`;
   if (billingAutoPrintToggleActionBtn) billingAutoPrintToggleActionBtn.textContent = billing.autoPrintEnabled ? 'Desactivar' : 'Activar';
-  si (billingLogoCurrentPreview && billingLogoCurrentText) {
-    si (billing.logoDataUrl) {
+  if (billingLogoCurrentPreview && billingLogoCurrentText) {
+    if (billing.logoDataUrl) {
       billingLogoCurrentPreview.src = billing.logoDataUrl;
       billingLogoCurrentPreview.classList.remove('hidden');
-      billingLogoCurrentText.textContent = 'Logotipo actual: Configurado';
-    } demás {
+      billingLogoCurrentText.textContent = 'Logo actual: Configurado';
+    } else {
       billingLogoCurrentPreview.src = '';
       billingLogoCurrentPreview.classList.add('hidden');
-      billingLogoCurrentText.textContent = 'Logotipo actual: No configurado';
+      billingLogoCurrentText.textContent = 'Logo actual: No configurado';
     }
   }
   if (cloudProviderInput) cloudProviderInput.value = state.settings.cloudProvider || 'firebase';
@@ -1783,18 +1924,18 @@ función applySettings() {
   if (cloudAuthQueryKeyInput) cloudAuthQueryKeyInput.value = state.settings.cloudAuthQueryKey || 'auth';
   refreshDatabaseConfigUi();
   renderBillingPreview();
-  Si (state.settings.logoDataUrl && homeLogo && logoPlaceholder) {
+  if (state.settings.logoDataUrl && homeLogo && logoPlaceholder) {
     homeLogo.src = state.settings.logoDataUrl;
     homeLogo.classList.remove('hidden');
     logoPlaceholder.classList.add('hidden');
   }
-  Si (state.settings.logoDataUrl && posHeaderLogo) {
+  if (state.settings.logoDataUrl && posHeaderLogo) {
     posHeaderLogo.src = state.settings.logoDataUrl;
     posHeaderLogo.classList.remove('hidden');
   }
 }
 
-función saveDatabaseSettings() {
+function saveDatabaseSettings() {
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   const provider = String(cloudProviderInput?.value || 'firebase').trim().toLowerCase();
   state.settings.cloudProvider = ['firebase', 'custom'].includes(provider) ? provider : 'firebase';
@@ -1819,11 +1960,15 @@ función saveDatabaseSettings() {
 function renderCashStatus() {
   if (!cashStatus) return;
   const activeCash = getActiveCashBox();
+  const general = state.generalCash || {};
+  const generalStatus = isGeneralCashOpen()
+    ? `Caja general ABIERTA · Efectivo ${money(general.efectivo || 0)} · QR ${money(general.qr || 0)}`
+    : 'Caja general CERRADA';
   if (!activeCash) {
-    cashStatus.textContent = 'Caja cerrada. No hay caja activa.';
+    cashStatus.textContent = `${generalStatus}. Caja del día cerrada.`;
     return;
   }
-  cashStatus.textContent = `Caja ABIERTA desde ${new Date(activeCash.fecha_apertura).toLocaleString()} por ${activeCash.usuario_apertura}. Monto inicial: ${money(activeCash.openingCash || 0)}.`;
+  cashStatus.textContent = `${generalStatus}. Caja del día ABIERTA desde ${new Date(activeCash.fecha_apertura).toLocaleString()} por ${activeCash.usuario_apertura}. Monto inicial: ${money(activeCash.openingCash || 0)}.`;
 }
 
 function formatDurationMs(ms) {
@@ -1934,11 +2079,11 @@ async function downloadClosingPdf(closingId) {
       ['Total descuentos', money(Number(closing.discountTotal || 0))],
       ['Total ingresos netos', money(agg.net)],
       ['Total efectivo', money(agg.cash)],
-      ['Total QR', dinero(agg.qr)],
+      ['Total QR', money(agg.qr)],
       ['Total salidas', money(agg.outTotal)],
-      ['Total de entradas', dinero(agg.inTotal)],
+      ['Total entradas', money(agg.inTotal)],
       ['Total esperado', money(agg.expected)],
-      ['Total contado', dinero(agregado contado)]
+      ['Total contado', money(agg.counted)]
     ];
     doc.autoTable({ startY: fy, head: [['Resumen financiero', 'Valor']], body: fin, theme: 'grid' });
     const oy = doc.lastAutoTable.finalY + 4;
@@ -1962,11 +2107,11 @@ async function downloadClosingPdf(closingId) {
     ];
     doc.autoTable({ startY: py, head: [['Método', 'Monto']], body: mpay, theme: 'grid' });
     const movementRows = (closing.outflowsSnapshot || []).map((m) => [
-      nueva Fecha(m.createdAt || closing.closedAt).toLocaleString(),
-      m.dirección || '-',
-      m.método || '-',
-      m.descripción || '-',
-      dinero(m.cantidad || 0),
+      new Date(m.createdAt || closing.closedAt).toLocaleString(),
+      m.direction || '-',
+      m.method || '-',
+      m.description || '-',
+      money(m.amount || 0),
       m.user || '-'
     ]);
     const entriesRows = movementRows.filter((r) => String(r[1]).toLowerCase() === 'entrada');
@@ -1974,11 +2119,11 @@ async function downloadClosingPdf(closingId) {
 
     const userSalesMap = new Map();
     (closing.salesSnapshot || []).forEach((sale) => {
-      const usuario = venta.usuario || '-';
+      const user = sale.user || '-';
       if (!userSalesMap.has(user)) userSalesMap.set(user, { count: 0, total: 0 });
-      const fila = userSalesMap.get(usuario);
-      fila.count += 1;
-      fila.total += Número(venta.total || 0);
+      const row = userSalesMap.get(user);
+      row.count += 1;
+      row.total += Number(sale.total || 0);
     });
     const userSalesRows = [...userSalesMap.entries()].map(([user, row]) => [user, String(row.count), money(row.total)]);
 
@@ -1986,16 +2131,16 @@ async function downloadClosingPdf(closingId) {
     doc.autoTable({ startY: doc.lastAutoTable.finalY + 3, head: [['DETALLE DE SALIDAS', '', '', '', '', '']], body: exitsRows.length ? exitsRows : [['Sin salidas.', '', '', '', '', '']], theme: 'grid' });
     doc.autoTable({ startY: doc.lastAutoTable.finalY + 3, head: [['VENTAS POR USUARIO', '', '']], body: userSalesRows.length ? userSalesRows : [['Sin ventas por usuario.', '', '']], theme: 'grid' });
     const historyRows = closingSalesHistoryRows(closing).map((sale) => [
-      nueva Fecha(venta.createdAt || venta.deletedAt).toLocaleString(),
+      new Date(sale.createdAt || sale.deletedAt).toLocaleString(),
       `#${orderNumberLabel(sale.orderNumber)}`,
-      venta.pago || '-',
-      dinero(venta.total),
-      venta.usuario || '-',
-      Etiqueta de estado de venta || estado de venta || 'OK'
+      sale.payment || '-',
+      money(sale.total),
+      sale.user || '-',
+      sale.statusLabel || sale.status || 'OK'
     ]);
     doc.addPage();
     doc.autoTable({ startY: 12, head: [['HISTORIAL DE VENTAS DE CIERRE', '', '', '', '', '']], body: historyRows.length ? historyRows : [['Sin historial de ventas.', '', '', '', '', '']], theme: 'grid', didParseCell: (hook) => {
-      Si (hook.section !== 'body') regresar;
+      if (hook.section !== 'body') return;
       const cellText = String(hook.row?.raw?.[5] || '');
       if (cellText.includes('ANULADA')) {
         hook.cell.styles.textColor = [193, 18, 31];
@@ -2003,34 +2148,34 @@ async function downloadClosingPdf(closingId) {
       }
     } });
     doc.save(`cierre_${String(closing.id || '').slice(-8)}.pdf`);
-  } capturar (error) {
+  } catch (err) {
     console.error('[pdf] cierre', err);
     alert('No se pudo generar el PDF del cierre.');
   }
 }
 
-función ensureClosingsStatsUI() {
+function ensureClosingsStatsUI() {
   const panel = document.getElementById('cierres');
-  Si (!panel || document.getElementById('closingsStatsCard')) regresar;
-  const tarjeta = document.createElement('div');
-  tarjeta.id = 'tarjetaEstadísticasClosings';
-  tarjeta.className = 'tarjeta';
+  if (!panel || document.getElementById('closingsStatsCard')) return;
+  const card = document.createElement('div');
+  card.id = 'closingsStatsCard';
+  card.className = 'card';
   card.innerHTML = `<div class="grid3"><button id="selectClosingsBtn" class="secondary" type="button">Seleccionar cierres</button><button id="generateClosingsStatsBtn" class="primary" type="button" disabled>Generar estadísticas</button><button id="downloadClosingsStatsPdfBtn" class="secondary" type="button" disabled>Descargar PDF</button>${isAdminUser() ? '<button id="modifyOpeningCashBtn" class="secondary" type="button">Modificar inicio de caja</button>' : ''}</div><p id="selectedClosingsInfo" class="muted">Cantidad de cierres seleccionados: 0</p><div id="closingsStatsOutput"></div>`;
-  panel.insertarAntes(tarjeta, panel.niños[1] || null);
+  panel.insertBefore(card, panel.children[1] || null);
 }
 
-función activeClosingsList() {
+function activeClosingsList() {
   return (state.cashClosings || []).slice().sort((a,b)=>new Date(b.closedAt)-new Date(a.closedAt));
 }
 
-función openSelectClosingsModal() {
+function openSelectClosingsModal() {
   document.getElementById('selectClosingsOverlay')?.remove();
-  const lista = listaCierresActivos();
+  const list = activeClosingsList();
   const ov = document.createElement('div');
   ov.id = 'selectClosingsOverlay';
   ov.className = 'modal';
   ov.innerHTML = `<div class="modal-card"><h3>LISTADO DE CIERRES ACTIVOS</h3><div class="grid2"><button id="selectAllClosingsBtn" class="secondary" type="button">Seleccionar todo</button><button id="acceptClosingsSelectionBtn" class="primary" type="button">Aceptar</button></div><table><thead><tr><th></th><th>Nro cierre</th><th>Fecha apertura</th><th>Fecha cierre</th><th>Usuario</th><th>Total generado</th></tr></thead><tbody id="selectClosingsTable"></tbody></table><button id="closeSelectClosingsBtn" class="secondary" type="button">Cerrar</button></div>`;
-  documento.cuerpo.añadirHijo(ov);
+  document.body.appendChild(ov);
   const tbody = ov.querySelector('#selectClosingsTable');
   tbody.innerHTML = list.map((c)=>`<tr><td><input type="checkbox" data-sc-id="${c.id}" ${state.selectedClosingIds.includes(c.id)?'checked':''} /></td><td>${String(c.id||'-').slice(-8)}</td><td>${new Date(c.openedAt || c.closedAt).toLocaleString()}</td><td>${new Date(c.closedAt).toLocaleString()}</td><td>${c.usuario_cierre || c.usuario_apertura || '-'}</td><td>${money(Number(c.cashIn||0)+Number(c.qrIn||0))}</td></tr>`).join('');
   ov.querySelector('#closeSelectClosingsBtn').onclick = () => ov.remove();
@@ -2040,27 +2185,27 @@ función openSelectClosingsModal() {
   ov.querySelector('#acceptClosingsSelectionBtn').onclick = () => {
     const ids = [...ov.querySelectorAll('input[data-sc-id]:checked')].map((ch)=>ch.dataset.scId);
     if (!ids.length) return alert('Debe seleccionar al menos un cierre');
-    estado.selectedClosingIds = ids;
+    state.selectedClosingIds = ids;
     const info = document.getElementById('selectedClosingsInfo');
     if (info) info.textContent = `Cantidad de cierres seleccionados: ${ids.length}`;
     const genBtn = document.getElementById('generateClosingsStatsBtn');
-    si (genBtn) genBtn.disabled = falso;
+    if (genBtn) genBtn.disabled = false;
     ov.remove();
   };
 }
 
 
 
-función openModifyOpeningCashModal() {
-  Si (!isAdminUser()) regresar;
-  const activo = obtenerCajaDeEfectivoActiva();
+function openModifyOpeningCashModal() {
+  if (!isAdminUser()) return;
+  const active = getActiveCashBox();
   if (!active) return alert('No hay caja activa para modificar inicio de caja.');
   document.getElementById('modifyOpeningOverlay')?.remove();
   const ov = document.createElement('div');
   ov.id = 'modifyOpeningOverlay';
   ov.className = 'modal';
   ov.innerHTML = `<div class="modal-card"><h3>Modificar inicio de caja actual</h3><p>Caja activa: ${String(active.id || '').slice(-8)}</p><p id="currentOpeningText">Inicio actual: ${money(Number(active.openingCash || 0))}</p><label>Nuevo monto<input id="newOpeningCashInput" type="number" min="0" step="0.01" value="${Number(active.openingCash || 0)}" /></label><label>Contraseña admin<input id="modifyOpeningPassInput" type="password" placeholder="Contraseña admin" /></label><div class="grid2"><button id="confirmModifyOpeningBtn" class="primary" type="button">Añadir cambio</button><button id="cancelModifyOpeningBtn" class="secondary" type="button">Cancelar</button></div><p id="modifyOpeningMsg"></p></div>`;
-  documento.cuerpo.añadirHijo(ov);
+  document.body.appendChild(ov);
   document.getElementById('cancelModifyOpeningBtn')?.addEventListener('click', () => ov.remove());
   document.getElementById('confirmModifyOpeningBtn')?.addEventListener('click', () => {
     const admin = currentUserRecord();
@@ -2069,11 +2214,11 @@ función openModifyOpeningCashModal() {
     if (!admin || admin.username !== 'admin' || pass !== String(admin.password || '')) {
       const m = document.getElementById('modifyOpeningMsg');
       if (m) { m.textContent = 'Contraseña admin incorrecta.'; m.className = 'error'; }
-      devolver;
+      return;
     }
-    activo.openingCash = val;
-    si (state.cashSession && state.cashSession.id === active.id) state.cashSession.openingCash = val;
-    persistir();
+    active.openingCash = val;
+    if (state.cashSession && state.cashSession.id === active.id) state.cashSession.openingCash = val;
+    persist();
     renderCashStatus();
     renderSummary();
     renderHomeActions();
@@ -2083,27 +2228,27 @@ función openModifyOpeningCashModal() {
 }
 
 
-función buildStatsFromSelectedClosings() {
+function buildStatsFromSelectedClosings() {
   const selected = activeClosingsList().filter((c)=>state.selectedClosingIds.includes(c.id));
-  const estadísticas = {
-    seleccionado,
-    recuento: longitud seleccionada,
+  const stats = {
+    selected,
+    count: selected.length,
     salesCount: 0,
-    ingresos totales: 0,
-    efectivo: 0,
-    transferencia: 0,
+    totalIncome: 0,
+    cash: 0,
+    transfer: 0,
     qr: 0,
-    otros: 0,
-    gastos: 0,
-    productosTotalCantidad: 0,
-    productsMap: nuevo Mapa(),
-    usersMap: nuevo Mapa()
+    others: 0,
+    expenses: 0,
+    productsTotalQty: 0,
+    productsMap: new Map(),
+    usersMap: new Map()
   };
-  seleccionado.forEach((c) => {
+  selected.forEach((c) => {
     const agg = getClosingAggregates(c);
     stats.salesCount += Number(c.salesCount || agg.sales.length || 0);
-    estadísticas.ingresostotales += agg.net;
-    estadísticas.dinero += agg.dinero;
+    stats.totalIncome += agg.net;
+    stats.cash += agg.cash;
     stats.transfer += agg.transfer;
     stats.qr += agg.qr;
     stats.others += agg.others;
@@ -2144,18 +2289,18 @@ function renderClosingsStatsOutput(stats) {
   out.innerHTML = `<div class="card"><h4>Resumen general</h4><p>Total ventas: ${stats.salesCount}</p><p>Total ingresos: ${money(stats.totalIncome)}</p><p>Total efectivo: ${money(stats.cash)}</p><p>Total transferencias: ${money(stats.transfer)}</p><p>Total QR: ${money(stats.qr)}</p><p>Total gastos: ${money(stats.expenses)}</p><p>Ticket promedio global: ${money(stats.avgTicket)}</p><p>Total productos vendidos: ${stats.productsTotalQty}</p><p>Cierres seleccionados: ${stats.count}</p></div><div class="card"><h4>Productos</h4><p>Producto más vendido: ${stats.productsTopQty ? `${stats.productsTopQty.name} (${stats.productsTopQty.qty})` : '-'}</p><p>Producto que más dinero generó: ${stats.productsTopAmount ? `${stats.productsTopAmount.name} (${money(stats.productsTopAmount.total)})` : '-'}</p><p>Total productos distintos vendidos: ${stats.products.length}</p><table><thead><tr><th>Top 5 productos</th><th>Cantidad</th><th>Total</th></tr></thead><tbody>${stats.top5.map((p)=>`<tr><td>${p.name}</td><td>${p.qty}</td><td>${money(p.total)}</td></tr>`).join('') || '<tr><td colspan="3">Sin datos</td></tr>'}</tbody></table></div><div class="card"><h4>Métodos de pago</h4><p>Efectivo: ${money(stats.cash)} (${stats.paymentPct.cash.toFixed(1)}%)</p><p>Transferencia: ${money(stats.transfer)} (${stats.paymentPct.transfer.toFixed(1)}%)</p><p>QR: ${money(stats.qr)} (${stats.paymentPct.qr.toFixed(1)}%)</p><p>Otros: ${money(stats.others)} (${stats.paymentPct.others.toFixed(1)}%)</p><p>Método más utilizado: ${stats.mostUsedMethod}</p></div><div class="card"><h4>Usuarios</h4><table><thead><tr><th>Usuario</th><th>Cierres</th><th>Total generado</th></tr></thead><tbody>${stats.users.map((u)=>`<tr><td>${u.user}</td><td>${u.closings}</td><td>${money(u.total)}</td></tr>`).join('') || '<tr><td colspan="3">Sin datos</td></tr>'}</tbody></table></div><div class="card"><h4>Estadísticas gráficas comparativas</h4><canvas id="closingsIncomeChart" width="760" height="220"></canvas><canvas id="closingsProductsChart" width="760" height="220"></canvas></div>`;
   const drawBars = (canvasId, labels, values, color='#1f7a5c') => {
     const cv = document.getElementById(canvasId);
-    si (!cv || !cv.getContext) regresar;
+    if (!cv || !cv.getContext) return;
     const ctx = cv.getContext('2d');
     const w = cv.width;
     const h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    Si (!values.length) regresar;
-    const max = Math.max(...valores, 1);
+    if (!values.length) return;
+    const max = Math.max(...values, 1);
     const bw = Math.max(20, Math.floor((w - 40) / values.length) - 8);
-    valores.forEach((v, i) => {
+    values.forEach((v, i) => {
       const x = 24 + i * (bw + 8);
       const bh = Math.max(2, Math.round((v / max) * (h - 55)));
-      constante y = h - 30 - bh;
+      const y = h - 30 - bh;
       ctx.fillStyle = color;
       ctx.fillRect(x, y, bw, bh);
       ctx.fillStyle = '#344054';
@@ -2163,18 +2308,18 @@ function renderClosingsStatsOutput(stats) {
       ctx.fillText(String(labels[i] || ''), x, h - 12);
     });
   };
-  const cierres = (stats.selected || []).slice().sort((a, b) => new Date(a.closedAt) - new Date(b.closedAt));
+  const closings = (stats.selected || []).slice().sort((a, b) => new Date(a.closedAt) - new Date(b.closedAt));
   drawBars('closingsIncomeChart', closings.map((c, i) => `C${i + 1}`), closings.map((c) => Number(c.cashIn || 0) + Number(c.qrIn || 0)), '#1570ef');
   drawBars('closingsProductsChart', (stats.top5 || []).map((p) => p.name), (stats.top5 || []).map((p) => Number(p.qty || 0)), '#1f7a5c');
 }
 
-función asíncrona downloadClosingsStatsPdf() {
-  si (!state.generatedClosingsStats) regresar;
-  intentar {
-    esperar ensureJsPdfLibs();
+async function downloadClosingsStatsPdf() {
+  if (!state.generatedClosingsStats) return;
+  try {
+    await ensureJsPdfLibs();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const st = estado.generatedClosingsStats;
+    const st = state.generatedClosingsStats;
     doc.setFontSize(14);
     doc.text((state.settings?.title1 || 'Mi Cafetería'), 14, 12);
     doc.setFontSize(10);
@@ -2196,27 +2341,34 @@ función asíncrona downloadClosingsStatsPdf() {
     doc.autoTable({ startY: 12, head: [['Usuario', 'Cierres', 'Total generado']], body: st.users.map((u)=>[u.user,String(u.closings),money(u.total)]) });
     doc.save('estadisticas_cierres_seleccionados.pdf');
   } catch (error) {
-    console.error('[pdf] estadísticas', error);
+    console.error('[pdf] stats', error);
     alert('No se pudo generar el PDF de estadísticas.');
   }
 }
-función renderCashClosings() {
-  si (!tablaCierresdeefectivo) devolver;
-  asegurarClosingsStatsUI();
-  const mes = closuresMonthFilter?.value || '';
-  const lista = mes ? estado.cierresdeefectivo.filter((c) => c.cerradoEn?.slice(0, 7) === mes) : estado.cierresdeefectivo;
-  cashClosingsTable.innerHTML = '';
-  si (!lista.longitud) {
-    cashClosingsTable.innerHTML = '<tr><td colspan="14">No hay cierres para el filtro seleccionado.</td></tr>';
-    devolver;
+function renderCashClosings() {
+  if (!cashClosingsTable) return;
+  ensureClosingsStatsUI();
+  const generalTable = document.getElementById('generalCashClosingsTable');
+  if (generalTable) {
+    const generalList = (state.generalClosings || []).slice().sort((a, b) => new Date(b.fecha_fin || 0) - new Date(a.fecha_fin || 0));
+    generalTable.innerHTML = generalList.length
+      ? generalList.map((closing) => `<tr><td>${closing.fecha_inicio ? new Date(closing.fecha_inicio).toLocaleString() : '-'}</td><td>${closing.fecha_fin ? new Date(closing.fecha_fin).toLocaleString() : '-'}</td><td>${money(closing.efectivo || 0)}</td><td>${money(closing.qr || 0)}</td><td>${money(closing.total || 0)}</td><td>${closing.usuario || '-'}</td></tr>`).join('')
+      : '<tr><td colspan="6">Sin cierres generales.</td></tr>';
   }
-  lista.forEach((c, idx) => {
+  const month = closingsMonthFilter?.value || '';
+  const list = month ? state.cashClosings.filter((c) => c.closedAt?.slice(0, 7) === month) : state.cashClosings;
+  cashClosingsTable.innerHTML = '';
+  if (!list.length) {
+    cashClosingsTable.innerHTML = '<tr><td colspan="14">No hay cierres para el filtro seleccionado.</td></tr>';
+    return;
+  }
+  list.forEach((c, idx) => {
     const outCash = (c.outflowsSnapshot || []).filter((m) => m.direction === 'salida' && m.method === 'efectivo').reduce((a,m)=>a+Number(m.amount||0),0);
     const inCash = (c.outflowsSnapshot || []).filter((m) => m.direction === 'entrada' && m.method === 'efectivo').reduce((a,m)=>a+Number(m.amount||0),0);
     const outQr = (c.outflowsSnapshot || []).filter((m) => m.direction === 'salida' && m.method === 'qr').reduce((a,m)=>a+Number(m.amount||0),0);
     const inQr = (c.outflowsSnapshot || []).filter((m) => m.direction === 'entrada' && m.method === 'qr').reduce((a,m)=>a+Number(m.amount||0),0);
     const finalCash = Number(c.openingCash || 0) + Number(c.cashIn || 0) - outCash + inCash;
-    const finalQr = Número(c.qrIn || 0) - outQr + inQr;
+    const finalQr = Number(c.qrIn || 0) - outQr + inQr;
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${new Date(c.closedAt).toLocaleString()}</td><td>${money(c.openingCash)}</td><td>${money(c.cashIn)}</td><td>${money(c.qrIn)}</td><td>${money(c.debtPending || 0)}</td><td>${money(outCash)}</td><td>${money(inCash)}</td><td>${money(outQr)}</td><td>${money(inQr)}</td><td>${money(finalCash)}</td><td>${money(finalQr)}</td><td>${c.salesCount || 0}</td><td><button class="secondary" data-closing-id="${c.id}" type="button">Ver detalle</button> <button class="secondary" data-closing-pdf="${c.id}" type="button">PDF</button></td><td>${hasPermission('deleteClosings') ? `<button class="secondary" data-closing-del="${c.id}" type="button">Eliminar</button>` : '-'}</td>`;
     tr.dataset.closingNumber = String(idx + 1);
@@ -2302,89 +2454,89 @@ function renderPeopleSelectors() {
   if (partialPersonSelect) partialPersonSelect.innerHTML = opts.join('');
 }
 
-función closePersonModal() {
+function closePersonModal() {
   document.getElementById('personModalOverlay')?.remove();
 }
 
-función openPersonFormModal(persona = null) {
-  cerrarPersonModal();
-  const superposición = document.createElement('div');
+function openPersonFormModal(person = null) {
+  closePersonModal();
+  const overlay = document.createElement('div');
   overlay.id = 'personModalOverlay';
-  superposición.className = 'modal';
+  overlay.className = 'modal';
   overlay.innerHTML = `<div class="modal-card"><h3>${person ? 'Editar persona' : 'Añadir persona'}</h3><div class="grid2"><label>Nombre<input id="pmName" type="text" value="${person?.name || ''}" /></label><label>Apellido<input id="pmLast" type="text" value="${person?.lastName || ''}" /></label><label>Descripción<input id="pmDesc" type="text" value="${person?.description || ''}" /></label><label>Número de teléfono<input id="pmPhone" type="text" value="${person?.phone || ''}" /></label></div><div class="grid2"><button id="pmSave" class="primary" type="button">${person ? 'Actualizar' : 'Añadir'}</button><button id="pmCancel" class="secondary" type="button">Volver atrás</button></div></div>`;
-  documento.cuerpo.añadirHijo(superposición);
+  document.body.appendChild(overlay);
   document.getElementById('pmCancel')?.addEventListener('click', closePersonModal);
   document.getElementById('pmSave')?.addEventListener('click', () => {
-    const nombre = (document.getElementById('pmName')?.value || '').trim();
-    si (!nombre) regresar;
+    const name = (document.getElementById('pmName')?.value || '').trim();
+    if (!name) return;
     const payload = {
-      nombre,
-      apellido: (document.getElementById('pmLast')?.value || '').trim(),
-      descripción: (document.getElementById('pmDesc')?.value || '').trim(),
-      teléfono: (document.getElementById('pmPhone')?.value || '').trim()
+      name,
+      lastName: (document.getElementById('pmLast')?.value || '').trim(),
+      description: (document.getElementById('pmDesc')?.value || '').trim(),
+      phone: (document.getElementById('pmPhone')?.value || '').trim()
     };
-    si (persona) Object.assign(persona, payload);
+    if (person) Object.assign(person, payload);
     else state.people.push({ id: uid(), ...payload });
-    persistir();
+    persist();
     renderPeopleSelectors();
-    cerrarPersonModal();
-    abrirListaModal de Personas();
+    closePersonModal();
+    openPeopleListModal();
   });
 }
 
-función openPeopleListModal() {
-  cerrarPersonModal();
-  const superposición = document.createElement('div');
+function openPeopleListModal() {
+  closePersonModal();
+  const overlay = document.createElement('div');
   overlay.id = 'personModalOverlay';
-  superposición.className = 'modal';
+  overlay.className = 'modal';
   overlay.innerHTML = `<div class="modal-card"><h3>Lista de personas</h3><div class="people-scroll"><table><thead><tr><th>Nombre</th><th>Apellido</th><th>Descripción</th><th>Teléfono</th><th>Acciones</th></tr></thead><tbody id="pmListBody"></tbody></table></div><div class="grid2"><button id="pmAddNew" class="primary" type="button">Añadir persona</button><button id="pmClose" class="secondary" type="button">Volver atrás</button></div></div>`;
-  documento.cuerpo.añadirHijo(superposición);
+  document.body.appendChild(overlay);
   const body = document.getElementById('pmListBody');
-  si (cuerpo) {
+  if (body) {
     body.innerHTML = state.people.length ? state.people.map((p) => `<tr><td>${p.name}</td><td>${p.lastName || '-'}</td><td>${p.description || '-'}</td><td>${p.phone || '-'}</td><td><button class="secondary" data-pm-edit="${p.id}" type="button">Editar</button> <button class="secondary" data-pm-del="${p.id}" type="button">Eliminar</button></td></tr>`).join('') : '<tr><td colspan="5">Sin personas registradas.</td></tr>';
   }
   document.getElementById('pmClose')?.addEventListener('click', closePersonModal);
   document.getElementById('pmAddNew')?.addEventListener('click', () => openPersonFormModal());
-  cuerpo?.addEventListener('click', (e) => {
-    const editar = e.target.closest('button[data-pm-edit]');
-    si (editar) {
-      const persona = estado.personas.find((p) => p.id === editar.conjunto.pmEdit);
-      si (persona) abrePersonFormModal(persona);
-      devolver;
+  body?.addEventListener('click', (e) => {
+    const edit = e.target.closest('button[data-pm-edit]');
+    if (edit) {
+      const person = state.people.find((p) => p.id === edit.dataset.pmEdit);
+      if (person) openPersonFormModal(person);
+      return;
     }
     const del = e.target.closest('button[data-pm-del]');
-    si (!del) regresar;
+    if (!del) return;
     const removedId = String(del.dataset.pmDel || '');
-    estado.personas = estado.personas.filter((p) => p.id !== removedId);
-    estado.removedPeopleIds = Array.from(new Set([...(estado.removedPeopleIds || []), removedId]));
-    persistir();
+    state.people = state.people.filter((p) => p.id !== removedId);
+    state.removedPeopleIds = Array.from(new Set([...(state.removedPeopleIds || []), removedId]));
+    persist();
     renderPeopleSelectors();
-    renderDeudores();
-    abrirListaModal de Personas();
+    renderDebtors();
+    openPeopleListModal();
   });
 }
 
-función renderDebtors() {
-  const tablaDeudasPersonas = $('tablaDeudasPersonas');
-  const títuloDeLaPersonaDeuda = $('títuloDeLaPersonaDeuda');
-  sea ​​DeudaPersonaTotal = $('DeudaPersonaTotal');
-  const tablaDetallesDeDeudaPersona = $('tablaDetallesDeDeudaPersona');
-  si (!debtPeopleTable || !debtPersonDetailsTable || !debtPersonTitle) regresar;
-  si (!deudaTotalPersona) {
-    deudaPersonaTotal = document.createElement('p');
-    deudaTotalPersona.id = 'deudaTotalPersona';
+function renderDebtors() {
+  const debtPeopleTable = $('debtPeopleTable');
+  const debtPersonTitle = $('debtPersonTitle');
+  let debtPersonTotal = $('debtPersonTotal');
+  const debtPersonDetailsTable = $('debtPersonDetailsTable');
+  if (!debtPeopleTable || !debtPersonDetailsTable || !debtPersonTitle) return;
+  if (!debtPersonTotal) {
+    debtPersonTotal = document.createElement('p');
+    debtPersonTotal.id = 'debtPersonTotal';
     debtPersonTotal.className = 'ok';
-    DeudaTotalPersona.style.fontWeight = '700';
-    DeudaPersonaTotal.estilo.margen = '0.35rem 0 0.75rem';
-    TítuloDeLaPersonaDeuda.insertarElementoAdyacente('afterend', TotalDeLaPersonaDeuda);
+    debtPersonTotal.style.fontWeight = '700';
+    debtPersonTotal.style.margin = '0.35rem 0 0.75rem';
+    debtPersonTitle.insertAdjacentElement('afterend', debtPersonTotal);
   }
-  const agrupado = nuevo Mapa();
-  estado.ventas.filtrar((s) => Número(s.debtAmount || 0) > 0 && s.debtorId).paraCada((s) => {
+  const grouped = new Map();
+  state.sales.filter((s) => Number(s.debtAmount || 0) > 0 && s.debtorId).forEach((s) => {
     if (!grouped.has(s.debtorId)) grouped.set(s.debtorId, []);
-    agrupado.get(s.debtorId).push(s);
+    grouped.get(s.debtorId).push(s);
   });
-  const filas = [...grouped.entries()].map(([personId, ventas]) => {
-    const persona = estado.personas.find((p) => p.id === personId);
+  const rows = [...grouped.entries()].map(([personId, sales]) => {
+    const person = state.people.find((p) => p.id === personId);
     const total = sales.reduce((a, x) => a + Number(x.debtAmount || 0), 0);
     return `<tr><td>${personFullName(person) || 'Persona eliminada'}</td><td>${money(total)}</td><td>${sales.length}</td><td><button class="secondary" data-debtor-id="${personId}" type="button">Ver detalles</button></td></tr>`;
   });
@@ -2392,19 +2544,19 @@ función renderDebtors() {
   if (debtPersonTotal && !state.activeDebtorId) debtPersonTotal.textContent = 'Deuda total: Bs 0.00';
   debtPeopleTable.onclick = (e) => {
     const btn = e.target.closest('button[data-debtor-id]');
-    si (!btn) regresar;
+    if (!btn) return;
     const person = state.people.find((p) => p.id === btn.dataset.debtorId);
-    const ventas = estado.ventas.filtro((s) => s.debtorId === btn.dataset.debtorId && Number(s.debtAmount || 0) > 0);
+    const sales = state.sales.filter((s) => s.debtorId === btn.dataset.debtorId && Number(s.debtAmount || 0) > 0);
     const total = sales.reduce((a, s) => a + Number(s.debtAmount || 0), 0);
-    estado.activeDebtorId = btn.dataset.debtorId;
+    state.activeDebtorId = btn.dataset.debtorId;
     debtPersonTitle.textContent = `${personFullName(person)} · ${person?.description || '-'} · Tel: ${person?.phone || '-'}`;
-    deudaPersonTotal.textContent = `Total de la deuda: ${dinero(total)}`;
+    debtPersonTotal.textContent = `Deuda total: ${money(total)}`;
     debtPersonDetailsTable.innerHTML = sales.map((s) => `<tr><td>${new Date(s.createdAt).toLocaleString()}</td><td>${s.items.map((i) => `${i.name} x${i.qty}`).join(', ')}</td><td>${money(s.debtAmount)}</td><td>${s.user}</td><td><button class=\"secondary\" data-pay-sale=\"${s.id}\" type=\"button\">Pagar deuda</button></td></tr>`).join('');
   };
 }
 
-función renderUsers() {
-  Si (!usersTable) regresar;
+function renderUsers() {
+  if (!usersTable) return;
   document.getElementById('backFromUsersActivityBtn')?.remove();
   const head = usersTable.closest('table')?.querySelector('thead tr');
   if (head) head.innerHTML = '<th>Usuario</th><th>Autoriza</th><th>Abrir caja</th><th>Cerrar caja</th><th>Eliminar ventas</th><th>Config. principal</th><th>Productos</th><th>Eliminar cierres</th><th>Eliminar mov. caja</th><th>Vaciar eliminadas</th><th>Gestionar usuarios</th><th>Acción</th>';
@@ -2605,13 +2757,13 @@ function registerComponentMove({ componentId, tipo, cantidad, descripcion = '' }
   });
 }
 
-función applyWarehouseImpactFromSaleItems(items = [], { reverse = false, saleId = '' } = {}) {
-  (elementos || []).forEach((it) => {
+function applyWarehouseImpactFromSaleItems(items = [], { reverse = false, saleId = '' } = {}) {
+  (items || []).forEach((it) => {
     const links = productComponentLinks(it.id);
-    enlaces.forEach((ln) => {
-      const cantidad = Número(ln.cantidad || 0) * Número(it.cantidad || 0);
-      si (!cantidad) devolver;
-      registrarComponentMove({
+    links.forEach((ln) => {
+      const qty = Number(ln.qty || 0) * Number(it.qty || 0);
+      if (!qty) return;
+      registerComponentMove({
         componentId: ln.componentId,
         tipo: reverse ? 'reverso_venta' : 'uso',
         cantidad: reverse ? qty : -qty,
@@ -2622,62 +2774,62 @@ función applyWarehouseImpactFromSaleItems(items = [], { reverse = false, saleId
 }
 
 
-función warehouseMoveDateKey(move) {
+function warehouseMoveDateKey(move) {
   return String(move?.fecha || '').slice(0, 10);
 }
 
-función openWarehouseNewTab(route = 'warehouse/gestion') {
+function openWarehouseNewTab(route = 'warehouse/gestion') {
   const base = `${window.location.origin}${window.location.pathname}`;
   window.open(`${base}#${normalizeRoute(route)}`, '_blank');
 }
 
-función renderWarehouseMovesSection(route = 'warehouse') {
-  si (!tablaDeMovimientosDeAlmacén) regresar;
-  const tarjeta = warehouseMovesTable.closest('.card');
+function renderWarehouseMovesSection(route = 'warehouse') {
+  if (!warehouseMovesTable) return;
+  const card = warehouseMovesTable.closest('.card');
   const activeMoves = (state.componentMoves || []).filter((m) => m && !m.archived);
   const archivedMoves = (state.componentMoves || []).filter((m) => m && m.archived);
   const currentRoute = normalizeRoute(route);
 
   if (card && !document.getElementById('warehouseMovesHeaderActions')) {
     const actions = document.createElement('div');
-    acciones.id = 'warehouseMovesHeaderActions';
-    acciones.className = 'grid3';
+    actions.id = 'warehouseMovesHeaderActions';
+    actions.className = 'grid3';
     actions.innerHTML = '<button id="warehouseActiveMovesBtn" class="secondary" type="button">Movimientos</button><button id="warehouseArchivedMovesBtn" class="secondary" type="button">Archivados</button><button id="warehouseArchiveTodayBtn" class="secondary" type="button">Archivar día actual</button>';
-    tarjeta.insertarAntes(acciones, tarjeta.consultaSelector('tabla'));
+    card.insertBefore(actions, card.querySelector('table'));
     document.getElementById('warehouseActiveMovesBtn')?.addEventListener('click', () => navigateTo('warehouse/movimientos', { replace: true }));
     document.getElementById('warehouseArchivedMovesBtn')?.addEventListener('click', () => navigateTo('warehouse/movimientos/archivados', { replace: true }));
     document.getElementById('warehouseArchiveTodayBtn')?.addEventListener('click', () => {
-      const hoy = new Date().toISOString().slice(0, 10);
-      sea ​​contador = 0;
-      (estado.componenteMoves || []).forEach((m) => {
-        si (!m || m.archived) regresar;
-        Si (warehouseMoveDateKey(m) !== hoy) regresar;
-        m.archived = verdadero;
-        m.archivedDate = hoy;
-        contador += 1;
+      const today = new Date().toISOString().slice(0, 10);
+      let count = 0;
+      (state.componentMoves || []).forEach((m) => {
+        if (!m || m.archived) return;
+        if (warehouseMoveDateKey(m) !== today) return;
+        m.archived = true;
+        m.archivedDate = today;
+        count += 1;
       });
-      persistir();
+      persist();
       renderWarehouse();
       if (warehouseStatus) warehouseStatus.textContent = count ? `Se archivaron ${count} movimientos del día ${today}.` : 'No hay movimientos activos del día actual para archivar.';
     });
   }
 
   if (currentRoute === 'warehouse/movimientos/archivados') {
-    const agrupado = nuevo Mapa();
+    const grouped = new Map();
     archivedMoves.forEach((m) => {
       const key = m.archivedDate || warehouseMoveDateKey(m);
-      agrupado.establecer(clave, (agrupado.obtener(clave) || 0) + 1);
+      grouped.set(key, (grouped.get(key) || 0) + 1);
     });
-    const filas = [...agrupadas.entradas()].ordenar((a, b) => String(b[0]).localeCompare(String(a[0])));
+    const rows = [...grouped.entries()].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
     const thead = warehouseMovesTable.closest('table')?.querySelector('thead tr');
     if (thead) thead.innerHTML = '<th>Fecha</th><th>Total movimientos</th><th>Acción</th>';
     warehouseMovesTable.innerHTML = rows.length ? rows.map(([day, qty]) => `<tr><td>${day}</td><td>${qty}</td><td><button class="secondary" data-wh-arch-day="${day}" type="button">Ver detalles</button></td></tr>`).join('') : '<tr><td colspan="3">Sin movimientos archivados.</td></tr>';
     warehouseMovesTable.onclick = (e) => {
       const btn = e.target.closest('button[data-wh-arch-day]');
-      si (!btn) regresar;
+      if (!btn) return;
       navigateTo(`warehouse/movimientos/archivados/${encodeURIComponent(btn.dataset.whArchDay || '')}`, { replace: true });
     };
-    devolver;
+    return;
   }
 
   if (currentRoute.startsWith('warehouse/movimientos/archivados/')) {
@@ -2686,7 +2838,7 @@ función renderWarehouseMovesSection(route = 'warehouse') {
     const thead = warehouseMovesTable.closest('table')?.querySelector('thead tr');
     if (thead) thead.innerHTML = '<th>Hora</th><th>Componente</th><th>Tipo</th><th>Cantidad</th><th>Usuario</th>';
     warehouseMovesTable.innerHTML = list.length ? list.map((m) => `<tr><td>${new Date(m.fecha || Date.now()).toLocaleTimeString()}</td><td>${m.componentName || '-'}</td><td>${m.tipo || '-'}</td><td>${Number(m.cantidad || 0)}</td><td>${m.usuario || '-'}</td></tr>`).join('') : '<tr><td colspan="5">Sin movimientos para la fecha seleccionada.</td></tr>';
-    devolver;
+    return;
   }
 
   const thead = warehouseMovesTable.closest('table')?.querySelector('thead tr');
@@ -3027,11 +3179,27 @@ function renderComboBuilder() {
 
 function renderOutflows() {
   if (!outflowsTable) return;
-  const list = state.activeCashBoxId ? (state.outflows || []).filter((o) => o.cashBoxId === state.activeCashBoxId) : [];
-  outflowsTable.innerHTML = list.map((o) => `<tr><td>${new Date(o.createdAt).toLocaleString()}</td><td>${o.direction}</td><td>${o.method}</td><td>${o.description}</td><td>${money(o.amount)}</td><td>${o.direction === 'entrada' ? '+' : '-'}</td><td><button class="secondary" data-out-del="${o.id}" type="button">Eliminar</button></td></tr>`).join('');
+  const list = (state.outflows || []).slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  outflowsTable.innerHTML = list.length
+    ? list.map((o) => {
+      const action = String(o.tipo || o.direction || '-');
+      const caja = String(o.caja || 'caja_dia').replace('caja_', 'Caja ');
+      const impact = o.direction === 'entrada' ? '+' : (o.direction === 'salida' ? '-' : '↔');
+      const canDelete = String(o.tipo || '') !== 'transferencia';
+      return `<tr><td>${new Date(o.createdAt).toLocaleString()}</td><td>${action}</td><td>${caja}</td><td>${o.method || '-'}</td><td>${o.description || '-'}</td><td>${money(o.amount)}</td><td>${impact}</td><td>${canDelete ? `<button class="secondary" data-out-del="${o.id}" type="button">Eliminar</button>` : '-'}</td></tr>`;
+    }).join('')
+    : '<tr><td colspan="8">Sin movimientos registrados.</td></tr>';
 }
 
 function renderSummary() {
+  const totalsGeneral = globalCashTotals();
+  const generalCashSummaryEfectivo = document.getElementById('generalCashSummaryEfectivo');
+  const generalCashSummaryQr = document.getElementById('generalCashSummaryQr');
+  const generalCashSummaryTotal = document.getElementById('generalCashSummaryTotal');
+  if (generalCashSummaryEfectivo) generalCashSummaryEfectivo.textContent = money(totalsGeneral.efectivo);
+  if (generalCashSummaryQr) generalCashSummaryQr.textContent = money(totalsGeneral.qr);
+  if (generalCashSummaryTotal) generalCashSummaryTotal.textContent = money(totalsGeneral.total);
+
   const activeCash = getActiveCashBox();
   if (!activeCash) {
     if (summarySalesCount) summarySalesCount.textContent = '0';
@@ -3050,26 +3218,21 @@ function renderSummary() {
     if (summaryOutQr) summaryOutQr.textContent = money(0);
     if (summaryInQr) summaryInQr.textContent = money(0);
     if (summaryFinalQr) summaryFinalQr.textContent = money(0);
-    if (cashTotalBox) cashTotalBox.textContent = money(0);
-    if (qrTotalBox) qrTotalBox.textContent = money(0);
+    if (cashTotalBox) cashTotalBox.textContent = money(totalsGeneral.efectivo);
+    if (qrTotalBox) qrTotalBox.textContent = money(totalsGeneral.qr);
     return;
   }
 
   const sales = salesForActiveCashBox().filter((s) => !s.carryOverDebt);
-  const debtPayments = activeDebtPayments().filter((p) => p.cashBoxId === state.activeCashBoxId);
-  const cashSales = sales.reduce((a, s) => a + Number(s.breakdown?.cash || 0), 0);
-  const qrSales = sales.reduce((a, s) => a + Number(s.breakdown?.qr || 0), 0);
-  const debtCash = debtPayments.reduce((a, p) => a + Number(p.cashAmount || (p.method === 'efectivo' ? p.amount : 0) || 0), 0);
-  const debtQr = debtPayments.reduce((a, p) => a + Number(p.qrAmount || (p.method === 'qr' ? p.amount : 0) || 0), 0);
-  const cashInTotal = cashSales + debtCash;
-  const qrInTotal = qrSales + debtQr;
+  const metrics = activeDailyCashMetrics();
+  const cashInTotal = metrics.cashIn;
+  const qrInTotal = metrics.qrIn;
   const debtPending = state.sales.reduce((a, s) => a + Number(s.debtAmount || 0), 0);
-  const outflows = (state.outflows || []).filter((o) => o.cashBoxId === state.activeCashBoxId);
-  const outCash = outflows.filter((o) => o.direction === 'salida' && o.method === 'efectivo').reduce((a, o) => a + Number(o.amount || 0), 0);
-  const inCash = outflows.filter((o) => o.direction === 'entrada' && o.method === 'efectivo').reduce((a, o) => a + Number(o.amount || 0), 0);
-  const outQr = outflows.filter((o) => o.direction === 'salida' && o.method === 'qr').reduce((a, o) => a + Number(o.amount || 0), 0);
-  const inQr = outflows.filter((o) => o.direction === 'entrada' && o.method === 'qr').reduce((a, o) => a + Number(o.amount || 0), 0);
-  const opening = Number(activeCash.openingCash || 0);
+  const outCash = metrics.outCash;
+  const inCash = metrics.inCash;
+  const outQr = metrics.outQr;
+  const inQr = metrics.inQr;
+  const opening = Number(metrics.openingCash || 0);
   const total = cashInTotal + qrInTotal + opening;
 
   if (summarySalesCount) summarySalesCount.textContent = String(sales.length);
@@ -3082,15 +3245,15 @@ function renderSummary() {
   if (summaryBoxInCash) summaryBoxInCash.textContent = money(opening);
   if (summaryOutCash) summaryOutCash.textContent = money(outCash);
   if (summaryInCash) summaryInCash.textContent = money(inCash);
-  const netCash = opening + cashInTotal + inCash - outCash;
+  const netCash = metrics.netCash;
   if (summaryNetCash) summaryNetCash.textContent = money(netCash);
   if (summaryFinalCash) summaryFinalCash.textContent = money(cashInTotal + inCash - outCash);
-  if (cashTotalBox) cashTotalBox.textContent = money(netCash);
+  if (cashTotalBox) cashTotalBox.textContent = money(totalsGeneral.efectivo);
   if (summaryQr) summaryQr.textContent = money(qrInTotal);
   if (summaryOutQr) summaryOutQr.textContent = money(outQr);
   if (summaryInQr) summaryInQr.textContent = money(inQr);
-  if (summaryFinalQr) summaryFinalQr.textContent = money(qrInTotal + inQr - outQr);
-  if (qrTotalBox) qrTotalBox.textContent = money(qrInTotal + inQr - outQr);
+  if (summaryFinalQr) summaryFinalQr.textContent = money(metrics.netQr);
+  if (qrTotalBox) qrTotalBox.textContent = money(totalsGeneral.qr);
 }
 
 
@@ -3780,6 +3943,8 @@ function snapshotPayload() {
     categoryImages: state.categoryImages || {},
     orderCounters: state.orderCounters || {},
     deletedRecordIds: state.deletedRecordIds || { cashClosings: [], sales: [] },
+    generalCash: state.generalCash || { efectivo: 0, qr: 0, estado: 'CERRADA', openedAt: '', closedAt: '', openedBy: '', closedBy: '', updatedAt: 0 },
+    generalClosings: state.generalClosings || [],
     updatedAt: Date.now()
   };
 }
@@ -3879,6 +4044,8 @@ async function syncToCloud(options = {}) {
     payload.outflows = mergeByIdPreferRemote(remoteData?.outflows, payload.outflows);
     payload.debtPayments = mergeByIdPreferRemote(remoteData?.debtPayments, payload.debtPayments);
     payload.cashBoxes = mergeCashBoxes(remoteData?.cashBoxes, payload.cashBoxes);
+    payload.generalClosings = mergeByIdPreferRemote(remoteData?.generalClosings, payload.generalClosings);
+    if (Number(remoteData?.generalCash?.updatedAt || 0) > Number(payload.generalCash?.updatedAt || 0)) payload.generalCash = remoteData.generalCash;
     if (!payload.activeCashBoxId && remoteData?.activeCashBoxId) payload.activeCashBoxId = remoteData.activeCashBoxId;
     if (payload.systemStatus === 'CAJA_CERRADA' && remoteData?.systemStatus === 'CAJA_ABIERTA' && payload.activeCashBoxId === remoteData.activeCashBoxId) {
       payload.systemStatus = remoteData.systemStatus;
@@ -3913,7 +4080,7 @@ function applyCloudData(data, options = {}) {
   if (!options.force && data.updatedAt <= state.lastSyncAt) return;
   state.lastSyncAt = Number(data.updatedAt || Date.now());
   state.forceLogoutAt = Number(data.forceLogoutAt || 0);
-  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds'].forEach((k) => {
+  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings'].forEach((k) => {
     if (data[k] !== undefined) state[k] = data[k];
   });
   if (state.currentUser && !validateSessionPolicy({ silent: true })) return;
@@ -4012,9 +4179,22 @@ async function pullFromCloud(options = {}) {
 
 function renderHomeActions() {
   const active = isCashOpen();
+  const generalOpen = isGeneralCashOpen();
+  const openGeneralCashBtn = document.getElementById('openGeneralCashBtn');
+  const closeGeneralCashBtn = document.getElementById('closeGeneralCashBtn');
+  const homeOutflowsBtn = document.getElementById('homeOutflowsBtn');
   if (goSalesBtn) goSalesBtn.classList.toggle('hidden', !active || !hasPermission('viewSalesButton'));
-  if (closeCashBtn) closeCashBtn.classList.toggle('hidden', !active || !canCloseCash() || !hasPermission('viewCloseCashButton'));
-  if (startCashBtn) startCashBtn.classList.toggle('hidden', active || !canOpenCash());
+  if (closeCashBtn) {
+    closeCashBtn.textContent = 'Cerrar caja del día';
+    closeCashBtn.classList.toggle('hidden', !active || !canCloseCash() || !hasPermission('viewCloseCashButton'));
+  }
+  if (startCashBtn) {
+    startCashBtn.textContent = 'Abrir caja del día';
+    startCashBtn.classList.toggle('hidden', active || !generalOpen || !canOpenCash());
+  }
+  if (openGeneralCashBtn) openGeneralCashBtn.classList.toggle('hidden', generalOpen || !canManageGeneralCash());
+  if (closeGeneralCashBtn) closeGeneralCashBtn.classList.toggle('hidden', !generalOpen || !canManageGeneralCash());
+  if (homeOutflowsBtn) homeOutflowsBtn.classList.toggle('hidden', !state.currentUser);
   if (openSettingsBtn) openSettingsBtn.classList.toggle('hidden', !hasPermission('accessSettings') || !hasPermission('viewSettingsButton'));
   if (goCashClosingsBtn) goCashClosingsBtn.classList.toggle('hidden', !hasPermission('viewClosingsTab'));
   if (goWarehouseBtn) goWarehouseBtn.classList.toggle('hidden', !hasPermission('viewWarehouseButton'));
@@ -4024,8 +4204,10 @@ function renderHomeActions() {
   if (sessionInfo) sessionInfo.textContent = user ? `Usuario activo: ${user.username}` : 'Sin sesión';
   if (posSessionInfo) posSessionInfo.textContent = user ? `Usuario: ${user.username}` : 'Usuario: -';
 
-  if (!active) {
-    setMsg(homeMessage, 'La caja está cerrada. Espera a que un usuario autorizado la abra.', false);
+  if (!generalOpen) {
+    setMsg(homeMessage, 'La caja general está cerrada. Debes abrirla para operar.', false);
+  } else if (!active) {
+    setMsg(homeMessage, 'La caja del día está cerrada. Espera a que un usuario autorizado la abra.', false);
   } else if (homeMessage?.textContent.includes('caja')) {
     setMsg(homeMessage, '');
   }
@@ -4100,30 +4282,37 @@ async function handleLogin() {
   const username = loginUserInput?.value?.trim() || '';
   const password = loginPassInput?.value?.trim() || '';
   if (!username || !password) return setMsg(loginMessage, 'Ingresa usuario y contraseña para continuar.', false);
-  try { await pullFromCloudWithTimeout(1500); } catch {}
-  ensureUsers();
-  const user = state.users.find((u) => u.username === username && u.password === password);
-  if (!user) return setMsg(loginMessage, 'Usuario o contraseña incorrectos.', false);
-  if (user.enabled === false) return setMsg(loginMessage, 'Usuario inhabilitado por administrador.', false);
-  const now = Date.now();
-  user.lastActivityAt = now;
-  state.currentUser = { username: user.username, loginAt: now, lastActivityAt: now };
-  persistSession();
-  saveLocalState();
-  beginSessionWatcher();
-  if (loginUserInput) loginUserInput.value = '';
-  if (loginPassInput) loginPassInput.value = '';
-  setMsg(loginMessage, '');
-  markUserActivity('login');
-  persist();
-  cloudHydrated = true;
-  maybeForceLogoutFromClosure();
-  if (!state.currentUser) return;
-  renderOrdersVisibility();
-  renderHomeActions();
-  showHome();
-  renderSalesHistory();
-  if (!getActiveCashBox()) setMsg(homeMessage, 'La caja está cerrada. Espera a que un usuario autorizado la abra.', false);
+  setMsg(loginMessage, 'Validando credenciales...', true);
+  try {
+    try { await pullFromCloudWithTimeout(1500); } catch {}
+    ensureUsers();
+    const user = state.users.find((u) => u.username === username && u.password === password);
+    if (!user) return setMsg(loginMessage, 'Usuario o contraseña incorrectos.', false);
+    if (user.enabled === false) return setMsg(loginMessage, 'Usuario inhabilitado por administrador.', false);
+    const now = Date.now();
+    user.lastActivityAt = now;
+    state.currentUser = { username: user.username, loginAt: now, lastActivityAt: now };
+    persistSession();
+    saveLocalState();
+    beginSessionWatcher();
+    if (loginUserInput) loginUserInput.value = '';
+    if (loginPassInput) loginPassInput.value = '';
+    setMsg(loginMessage, 'Ingreso correcto.');
+    markUserActivity('login');
+    persist();
+    cloudHydrated = true;
+    maybeForceLogoutFromClosure();
+    if (!state.currentUser) return;
+    renderOrdersVisibility();
+    renderHomeActions();
+    showHome();
+    renderSalesHistory();
+    if (!isGeneralCashOpen()) setMsg(homeMessage, 'La caja general está cerrada. Debes abrirla para operar.', false);
+    else if (!getActiveCashBox()) setMsg(homeMessage, 'La caja del día está cerrada. Espera a que un usuario autorizado la abra.', false);
+  } catch (err) {
+    console.error('[login] error', err);
+    setMsg(loginMessage, 'No se pudo iniciar sesión. Revisa configuración/local storage/sincronización.', false);
+  }
 }
 
 function logout(message = '') {
@@ -4147,6 +4336,88 @@ function closeStartCashModal() {
   document.getElementById('startCashModalOverlay')?.remove();
 }
 
+function closeGeneralCashModal() {
+  document.getElementById('generalCashModalOverlay')?.remove();
+}
+
+function openGeneralCashModal() {
+  if (!canManageGeneralCash()) return setMsg(homeMessage, 'No tienes permiso para abrir la caja general.', false);
+  if (isGeneralCashOpen()) return setMsg(homeMessage, 'La caja general ya está abierta.', false);
+  closeGeneralCashModal();
+  const overlay = document.createElement('div');
+  overlay.id = 'generalCashModalOverlay';
+  overlay.className = 'modal';
+  overlay.innerHTML = `<div class="modal-card"><h3>Abrir caja general</h3><div class="grid2"><label>Efectivo inicial<input id="generalCashOpeningInput" type="number" min="0" step="0.01" placeholder="0.00" /></label><label>QR / banco inicial<input id="generalCashOpeningQrInput" type="number" min="0" step="0.01" placeholder="0.00" /></label></div><div class="grid2"><button id="generalCashConfirmBtn" class="primary" type="button">Confirmar</button><button id="generalCashCancelBtn" class="secondary" type="button">Cancelar</button></div></div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('generalCashCancelBtn')?.addEventListener('click', closeGeneralCashModal);
+  document.getElementById('generalCashConfirmBtn')?.addEventListener('click', () => {
+    const efectivo = Math.max(0, Number(document.getElementById('generalCashOpeningInput')?.value || 0));
+    const qr = Math.max(0, Number(document.getElementById('generalCashOpeningQrInput')?.value || 0));
+    startGeneralCashSession({ efectivo, qr });
+  });
+}
+
+function openCloseGeneralCashModal() {
+  if (!canManageGeneralCash()) return setMsg(homeMessage, 'No tienes permiso para cerrar la caja general.', false);
+  if (!isGeneralCashOpen()) return setMsg(homeMessage, 'La caja general ya está cerrada.', false);
+  if (getActiveCashBox()) return setMsg(homeMessage, 'Primero debes cerrar la caja del día.', false);
+  closeGeneralCashModal();
+  const overlay = document.createElement('div');
+  overlay.id = 'generalCashModalOverlay';
+  overlay.className = 'modal';
+  overlay.innerHTML = `<div class="modal-card"><h3>Cerrar caja general</h3><p>Confirma con tu contraseña.</p><label>Contraseña<input id="generalCashClosePassInput" type="password" placeholder="Contraseña" /></label><div class="grid2"><button id="generalCashCloseConfirmBtn" class="primary" type="button">Cerrar caja general</button><button id="generalCashCancelBtn" class="secondary" type="button">Cancelar</button></div></div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('generalCashCancelBtn')?.addEventListener('click', closeGeneralCashModal);
+  document.getElementById('generalCashCloseConfirmBtn')?.addEventListener('click', () => closeGeneralCashSession(document.getElementById('generalCashClosePassInput')?.value || ''));
+}
+
+function startGeneralCashSession({ efectivo = 0, qr = 0 } = {}) {
+  if (!canManageGeneralCash()) return setMsg(homeMessage, 'No tienes permiso para abrir la caja general.', false);
+  if (isGeneralCashOpen()) return setMsg(homeMessage, 'La caja general ya está abierta.', false);
+  state.generalCash = {
+    efectivo: Math.max(0, Number(efectivo || 0)),
+    qr: Math.max(0, Number(qr || 0)),
+    estado: 'ABIERTA',
+    openedAt: new Date().toISOString(),
+    closedAt: '',
+    openedBy: state.currentUser?.username || '-',
+    closedBy: '',
+    updatedAt: Date.now()
+  };
+  closeGeneralCashModal();
+  persist();
+  refreshFinancialViews();
+  renderHomeActions();
+  setMsg(homeMessage, 'Caja general abierta correctamente.');
+}
+
+function closeGeneralCashSession(password = '') {
+  const user = currentUserRecord();
+  if (!user || user.password !== String(password || '')) return setMsg(homeMessage, 'Contraseña incorrecta para cerrar caja general.', false);
+  const closing = {
+    id: uid(),
+    fecha_inicio: state.generalCash?.openedAt || '',
+    fecha_fin: new Date().toISOString(),
+    efectivo: Number(state.generalCash?.efectivo || 0),
+    qr: Number(state.generalCash?.qr || 0),
+    total: Number(state.generalCash?.efectivo || 0) + Number(state.generalCash?.qr || 0),
+    usuario: state.currentUser?.username || '-'
+  };
+  state.generalClosings.unshift(closing);
+  state.generalCash = {
+    ...state.generalCash,
+    estado: 'CERRADA',
+    closedAt: closing.fecha_fin,
+    closedBy: state.currentUser?.username || '-',
+    updatedAt: Date.now()
+  };
+  closeGeneralCashModal();
+  persist();
+  refreshFinancialViews();
+  renderHomeActions();
+  setMsg(homeMessage, 'Caja general cerrada correctamente.');
+}
+
 function openStartCashModal() {
   console.info('[cash] click Abrir Caja');
   if (!canOpenCash()) {
@@ -4159,11 +4430,15 @@ function openStartCashModal() {
     setMsg(homeMessage, 'Ya existe una caja abierta.', false);
     return;
   }
+  if (!isGeneralCashOpen()) {
+    setMsg(homeMessage, 'Debes abrir la caja general antes de abrir la caja del día.', false);
+    return;
+  }
   closeStartCashModal();
   const overlay = document.createElement('div');
   overlay.id = 'startCashModalOverlay';
   overlay.className = 'modal';
-  overlay.innerHTML = `<div class="modal-card"><h3>Abrir caja</h3><p>Ingresa el monto inicial de caja.</p><div class="grid2"><label>Monto inicial<input id="startCashOpeningInput" type="number" min="0" step="0.01" placeholder="0.00" /></label></div><div class="grid2"><button id="startCashConfirmBtn" class="primary" type="button">Confirmar apertura</button><button id="startCashCancelBtn" class="secondary" type="button">Cancelar</button></div></div>`;
+  overlay.innerHTML = `<div class="modal-card"><h3>Abrir caja del día</h3><p>Ingresa el monto inicial que saldrá desde la caja general.</p><div class="grid2"><label>Monto inicial<input id="startCashOpeningInput" type="number" min="0" step="0.01" placeholder="0.00" /></label></div><div class="grid2"><button id="startCashConfirmBtn" class="primary" type="button">Confirmar apertura</button><button id="startCashCancelBtn" class="secondary" type="button">Cancelar</button></div></div>`;
   document.body.appendChild(overlay);
   document.getElementById('startCashCancelBtn')?.addEventListener('click', closeStartCashModal);
   document.getElementById('startCashConfirmBtn')?.addEventListener('click', () => {
@@ -4189,6 +4464,8 @@ async function startCashSession(openingAmount = 0) {
     console.error('[cash] monto inicial inválido', openingAmount);
     return setMsg(homeMessage, 'Monto inicial inválido.', false);
   }
+  if (!isGeneralCashOpen()) return setMsg(homeMessage, 'La caja general debe estar abierta.', false);
+  if (parsedOpening > Number(state.generalCash?.efectivo || 0)) return setMsg(homeMessage, 'La caja general no tiene suficiente efectivo para transferir a la caja del día.', false);
 
   const nowIso = new Date().toISOString();
   const cashBox = {
@@ -4206,6 +4483,22 @@ async function startCashSession(openingAmount = 0) {
   state.activeCashBoxId = cashBox.id;
   state.systemStatus = 'CAJA_ABIERTA';
   state.cashSession = { id: cashBox.id, openedAt: cashBox.fecha_apertura, openingCash: parsedOpening, orderCounter: 1 };
+  state.generalCash.efectivo = Math.max(0, Number(state.generalCash?.efectivo || 0) - parsedOpening);
+  state.generalCash.updatedAt = Date.now();
+  state.outflows.unshift({
+    id: uid(),
+    tipo: 'transferencia',
+    caja: 'caja_dia',
+    de: 'caja_general',
+    a: 'caja_dia',
+    cashBoxId: cashBox.id,
+    createdAt: nowIso,
+    direction: 'entrada',
+    method: 'efectivo',
+    description: 'Transferencia interna de apertura a caja del día',
+    amount: parsedOpening,
+    user: state.currentUser?.username || '-'
+  });
 
   closeStartCashModal();
   startCashCard?.classList.add('hidden');
@@ -4220,7 +4513,7 @@ async function startCashSession(openingAmount = 0) {
   renderDebtors();
   renderOutflows();
   console.info('[cash] caja abierta correctamente', { cashBoxId: cashBox.id });
-  setMsg(homeMessage, 'Caja abierta correctamente.');
+  setMsg(homeMessage, 'Caja del día abierta correctamente.');
   switchToPos('ventas');
 }
 
@@ -4236,6 +4529,7 @@ async function closeCashSession() {
 
     const daySales = salesForActiveCashBox().filter((sale) => !sale.carryOverDebt);
     const dayOutflows = (state.outflows || []).filter((move) => move.cashBoxId === state.activeCashBoxId);
+    const metrics = activeDailyCashMetrics(state.activeCashBoxId);
     const dayDebtPayments = activeDebtPayments().filter((pay) => pay.cashBoxId === state.activeCashBoxId);
     const dayDeletedSales = (state.deletedSales || []).filter((sale) => sale.cashBoxId === state.activeCashBoxId);
 
@@ -4248,6 +4542,45 @@ async function closeCashSession() {
     const cashIn = daySales.reduce((sum, sale) => sum + Number(sale.breakdown?.cash || 0), 0);
     const qrIn = daySales.reduce((sum, sale) => sum + Number(sale.breakdown?.qr || 0), 0);
     const debtPendingTotal = daySales.reduce((sum, sale) => sum + Number(sale.debtAmount || 0), 0);
+
+    const transferMoves = [];
+    if (metrics.netCash > 0) {
+      state.generalCash.efectivo = Number(state.generalCash?.efectivo || 0) + Number(metrics.netCash || 0);
+      state.generalCash.updatedAt = Date.now();
+      transferMoves.push({
+        id: uid(),
+        tipo: 'transferencia',
+        caja: 'caja_dia',
+        de: 'caja_dia',
+        a: 'caja_general',
+        cashBoxId: state.activeCashBoxId,
+        createdAt: new Date().toISOString(),
+        direction: 'salida',
+        method: 'efectivo',
+        description: 'Transferencia de cierre hacia caja general',
+        amount: Number(metrics.netCash || 0),
+        user: state.currentUser?.username || '-'
+      });
+    }
+    if (metrics.netQr > 0) {
+      state.generalCash.qr = Number(state.generalCash?.qr || 0) + Number(metrics.netQr || 0);
+      state.generalCash.updatedAt = Date.now();
+      transferMoves.push({
+        id: uid(),
+        tipo: 'transferencia',
+        caja: 'caja_dia',
+        de: 'caja_dia',
+        a: 'caja_general',
+        cashBoxId: state.activeCashBoxId,
+        createdAt: new Date().toISOString(),
+        direction: 'salida',
+        method: 'qr',
+        description: 'Transferencia QR de cierre hacia caja general',
+        amount: Number(metrics.netQr || 0),
+        user: state.currentUser?.username || '-'
+      });
+    }
+    if (transferMoves.length) state.outflows.unshift(...transferMoves.reverse());
 
     activeCash.estado = 'CERRADA';
     activeCash.fecha_cierre = new Date().toISOString();
@@ -4273,7 +4606,7 @@ async function closeCashSession() {
       salesIds: daySales.map((sale) => sale.id),
       salesSnapshot: daySales.map((sale) => ({ ...sale })),
       deletedSalesSnapshot: dayDeletedSales.map((sale) => ({ ...sale })),
-      outflowsSnapshot: dayOutflows.map((move) => ({ ...move })),
+      outflowsSnapshot: [...dayOutflows.map((move) => ({ ...move })), ...transferMoves.map((move) => ({ ...move }))],
       debtPaymentsSnapshot: dayDebtPayments.map((pay) => ({ ...pay }))
     };
     state.cashClosings.unshift(closing);
@@ -4295,7 +4628,7 @@ async function closeCashSession() {
     switchToPos('ventas');
     showHome();
     Promise.resolve(syncToCloud()).catch((err) => console.error('[cash] sync close failed', err));
-    setMsg(homeMessage, 'La caja ha sido cerrada.', false);
+    setMsg(homeMessage, 'La caja del día ha sido cerrada.', false);
   } catch (err) {
     console.error('[cash] closeCashSession error', err);
     setMsg(homeMessage, 'No se pudo cerrar caja. Intenta nuevamente.', false);
@@ -4573,7 +4906,8 @@ function permissionSchema() {
     { key: 'accessSettings', label: 'Puede acceder a configuración' },
     { key: 'deleteClosings', label: 'Puede eliminar cierres de caja' },
     { key: 'deleteCashMovements', label: 'Puede eliminar mov. de caja' },
-    { key: 'clearDeletedSalesHistory', label: 'Puede vaciar ventas eliminadas' }
+    { key: 'clearDeletedSalesHistory', label: 'Puede vaciar ventas eliminadas' },
+    { key: 'abrir_cerrar_caja_general', label: 'Puede abrir/cerrar caja general' }
   ];
 }
 
@@ -5115,6 +5449,9 @@ function wireEvents() {
   loginPassInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
   logoutBtn?.addEventListener('click', logout);
   posLogoutBtn?.addEventListener('click', logout);
+  document.getElementById('openGeneralCashBtn')?.addEventListener('click', openGeneralCashModal);
+  document.getElementById('closeGeneralCashBtn')?.addEventListener('click', openCloseGeneralCashModal);
+  document.getElementById('homeOutflowsBtn')?.addEventListener('click', () => navigateTo('pos/salidas'));
   startCashBtn?.addEventListener('click', () => { settingsCard?.classList.add('hidden'); openStartCashModal(); });
   openNewSaleBtn?.addEventListener('click', () => {
     state.currentCart = [];
@@ -5502,10 +5839,21 @@ function wireEvents() {
   backFromConfigVentasBtn?.addEventListener('click', () => navigateTo(parentRoute(navStack[navStack.length - 1] || 'home'), { replace: true }));
 
   addOutflowBtn?.addEventListener('click', () => {
-    if (!getActiveCashBox()) return;
+    const caja = document.getElementById('outflowCashBoxType')?.value || 'caja_dia';
+    if (caja === 'caja_dia' && !getActiveCashBox()) return;
+    if (caja === 'caja_general' && !isGeneralCashOpen()) return;
     const amount = Number(outflowAmount?.value || 0);
     if (amount <= 0) return;
-    state.outflows.unshift({ id: uid(), cashBoxId: state.activeCashBoxId || '', createdAt: new Date().toISOString(), direction: outflowDirection?.value || 'salida', method: outflowMethod?.value || 'efectivo', description: outflowDescription?.value || '', amount, user: state.currentUser?.username || '-' });
+    const direction = outflowDirection?.value || 'salida';
+    const method = outflowMethod?.value || 'efectivo';
+    if (caja === 'caja_general') {
+      const current = Number(state.generalCash?.[method] || 0);
+      const next = direction === 'entrada' ? current + amount : current - amount;
+      if (next < 0) return alert('La caja general no tiene saldo suficiente.');
+      state.generalCash[method] = next;
+      state.generalCash.updatedAt = Date.now();
+    }
+    state.outflows.unshift({ id: uid(), tipo: direction, caja, cashBoxId: caja === 'caja_dia' ? (state.activeCashBoxId || '') : '', createdAt: new Date().toISOString(), direction, method, description: outflowDescription?.value || '', amount, user: state.currentUser?.username || '-' });
     if (outflowAmount) outflowAmount.value = '';
     if (outflowDescription) outflowDescription.value = '';
     persist();
@@ -5514,6 +5862,14 @@ function wireEvents() {
   outflowsTable?.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-out-del]');
     if (!b) return;
+    const row = (state.outflows || []).find((o) => o.id === b.dataset.outDel);
+    if (!row) return;
+    if (row.caja === 'caja_general') {
+      const method = row.method || 'efectivo';
+      const current = Number(state.generalCash?.[method] || 0);
+      state.generalCash[method] = row.direction === 'entrada' ? Math.max(0, current - Number(row.amount || 0)) : current + Number(row.amount || 0);
+      state.generalCash.updatedAt = Date.now();
+    }
     state.outflows = state.outflows.filter((o) => o.id !== b.dataset.outDel);
     persist();
     refreshFinancialViews();
@@ -5849,6 +6205,7 @@ function wireEvents() {
 }
 
 async function bootstrap() {
+  loadLocalState();
   normalizeCloudSettings();
   ensureUsers();
   ensureSeedData();
@@ -5872,6 +6229,7 @@ async function bootstrap() {
   saveLocalState();
   applySettings();
   ensureSalesModeButton();
+  ensureGeneralCashUi();
   wireEvents();
   Promise.resolve().then(() => ensureJsPdfLibs()).catch(() => {});
   renderOrdersVisibility();
