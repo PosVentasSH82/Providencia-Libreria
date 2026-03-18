@@ -1,29 +1,29 @@
-const state = {
-  products: [],
-  sales: [],
-  deletedSales: [],
-  cashClosings: [],
-  cashSession: null,
-  users: [],
-  currentUser: null,
-  settings: {"title1":"Mi Cafetería","title2":"Pantalla principal","posTitle":"POS Cafetería","posSubtitle":"Ventas, productos, deudas, cierres y resumen diario.","logoDataUrl":"assets/logo-sh82.png","accentColor":"#1f7a5c","bgColor":"#f7f7fb","cardColor":"#ffffff","logoSize":120,"title1Size":32,"title2Size":16,"title1Font":"Inter, system-ui, sans-serif","title2Font":"Inter, system-ui, sans-serif","title1Color":"#1d2530","title2Color":"#6f7a86","posLogoSize":56,"ordersEnabled":true},
-  categories: [],
-  subcategories: {},
-  people: [],
-  stockConfig: {"enabled":false,"min":0},
-  queuedOrders: [],
+
+  productos: [],
+  ventas: [],
+  ventas eliminadas: [],
+  Cierres de efectivo: [],
+  cashSession: nulo,
+  usuarios: [],
+  usuarioactual: nulo,
+  configuración: {"título1":Mi Cafetería,"título2":Pantalla principal,"títuloPostítulo":POS Cafetería,"subtítuloPostítulo":Ventas, productos, deudas, cierres y resumen diario.,"logoDataUrl":assets/logo-sh82.png,"colorAcento":#1f7a5c,"colorFondo":#f7f7fb,"colorTarjeta":#ffffff,"tamañoLogo":120,"tamañoTítulo1":32,"tamañoTítulo2":16,"fuenteTítulo1":Inter, system-ui, sans-serif,"fuenteTítulo2":Inter, system-ui, sans-serif,"colorTítulo1":#1d2530,"colorTítulo2":#6f7a86,"tamañoLogoPos":56,"pedidosHabilitados":true},
+  categorías: [],
+  subcategorías: {},
+  gente: [],
+  stockConfig: {"habilitado":falso,"mínimo":0},
+  Órdenes en cola: [],
   removedPeopleIds: [],
   userSalesModes: {},
   touchUiConfigByUser: {},
   categoryImages: {},
-  orderCounters: {},
+  Contadores de pedidos: {},
   deletedRecordIds: {"cashClosings":[],"sales":[]}
 };
 
-let sessionWatchInterval = null;
+sea ​​sessionWatchInterval = null;
 const SESSION_INACTIVITY_LIMIT_MS = 3 * 60 * 60 * 1000;
 const MAX_IMAGE_UPLOAD_BYTES = Number.POSITIVE_INFINITY;
-const imageUploadStatus = { product: {}, category: {} };
+const imageUploadStatus = { producto: {}, categoría: {} };
 const imagePreviewCache = {};
 const imageLoadInFlight = {};
 const imageMissingRefs = {};
@@ -32,22 +32,22 @@ let scheduledImageUiRefresh = 0;
 
 const SESSION_STORAGE_KEY = 'cafeteria_session_user';
 
-function persistSession() {
-  try {
+función persistSession() {
+  intentar {
     if (state.currentUser?.username) localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ username: state.currentUser.username }));
-    else localStorage.removeItem(SESSION_STORAGE_KEY);
-  } catch {}
+    de lo contrario localStorage.removeItem(SESSION_STORAGE_KEY);
+  } atrapar {}
 }
 
-function restoreSessionFromStorage() {
-  try {
+función restaurarSesiónDesdeAlmacenamiento() {
+  intentar {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!raw) return;
-    const data = JSON.parse(raw);
+    si (!raw) regresar;
+    const datos = JSON.parse(raw);
     const username = String(data?.username || '').trim();
-    if (!username) return;
-    state.currentUser = { username, loginAt: Date.now(), lastActivityAt: Date.now() };
-  } catch {}
+    si (!nombredeusuario) regresar;
+    estado.usuarioActual = { nombredeusuario, loginAt: Fecha.ahora(), lastActivityAt: Fecha.ahora() };
+  } atrapar {}
 }
 
 
@@ -62,7 +62,7 @@ const loginMessage = $('loginMessage');
 const homeMessage = $('homeMessage');
 const sessionInfo = $('sessionInfo');
 const posSessionInfo = $('posSessionInfo');
-const logoutBtn = $('logoutBtn');
+const botónCerrarSesión = $('botónCerrarSesión');
 const posLogoutBtn = $('posLogoutBtn');
 const goSalesBtn = $('goSalesBtn');
 const startCashBtn = $('startCashBtn');
@@ -77,7 +77,7 @@ const cashCloseResult = $('cashCloseResult');
 const backHomeBtn = $('backHomeBtn');
 const settingsCard = $('settingsCard');
 const closeSettingsScreenBtn = $('closeSettingsScreenBtn');
-const homeLogo = $('homeLogo');
+const logotipo de inicio = $('logotipo de inicio');
 const logoPlaceholder = $('logoPlaceholder');
 const businessName = $('businessName');
 const homeSubtitle = $('homeSubtitle');
@@ -117,29 +117,29 @@ const stockPageImportFileInput = $('stockPageImportFileInput');
 const clearAllStockBtn = $('clearAllStockBtn');
 const warehouseScreen = $('warehouseScreen');
 const backFromWarehouseBtn = $('backFromWarehouseBtn');
-const warehouseStatus = $('warehouseStatus');
+const estadoAlmacén = $('estadoAlmacén');
 const componentNameInput = $('componentNameInput');
 const componentMinInput = $('componentMinInput');
 const createComponentBtn = $('createComponentBtn');
 const warehouseProductSelect = $('warehouseProductSelect');
 const warehouseComponentSelect = $('warehouseComponentSelect');
 const warehouseLinkQtyInput = $('warehouseLinkQtyInput');
-const linkComponentBtn = $('linkComponentBtn');
+const enlaceComponentBtn = $('enlaceComponentBtn');
 const warehouseMoveComponentSelect = $('warehouseMoveComponentSelect');
 const warehouseMoveQtyInput = $('warehouseMoveQtyInput');
 const warehouseMoveDescInput = $('warehouseMoveDescInput');
 const warehouseAddPurchaseBtn = $('warehouseAddPurchaseBtn');
-const warehouseAddWasteBtn = $('warehouseAddWasteBtn');
-const warehouseTable = $('warehouseTable');
-const warehouseMovesTable = $('warehouseMovesTable');
+const almacénAgregarResiduosBtn = $('almacénAgregarResiduosBtn');
+const tablaAlmacén = $('tablaAlmacén');
+const tablaDeMovimientosAlmacén = $('tablaDeMovimientosAlmacén');
 const tabs = document.querySelectorAll('.tab');
 const panels = document.querySelectorAll('.panel');
 const createSaleBtn = $('createSale');
-const saleMessage = $('saleMessage');
+const mensaje de venta = $('mensaje de venta');
 const openNewSaleBtn = $('openNewSaleBtn');
 const saleFormContainer = $('saleFormContainer');
 const saleCategoryButtons = $('saleCategoryButtons');
-const saleCategorySelectors = $('saleCategorySelectors');
+const salesCategorySelectors = $('saleCategorySelectors');
 const cartTable = $('cartTable');
 const saleGrossTotal = $('saleGrossTotal');
 const saleDiscountTotal = $('saleDiscountTotal');
@@ -239,8 +239,9 @@ const backFromProductsListBtn = $('backFromProductsListBtn');
 const backFromStockBtn = $('backFromStockBtn');
 const productForm = $('productForm');
 const productCategory = $('productCategory');
+const productSubCategory = $('productSubCategory');
 const productName = $('productName');
-const productPrice = $('productPrice');
+const precioProducto = $('precioProducto');
 const productsTable = $('productsTable');
 const productListCard = $('productListCard');
 const openCreateProductFromListBtn = $('openCreateProductFromListBtn');
@@ -403,20 +404,20 @@ function syncAppConfig() {
 
 let tempConfig = { stockActivo: appConfig.stockActivo, activarPedidos: appConfig.activarPedidos };
 
-function syncTempConfigFromApp() {
+función syncTempConfigFromApp() {
   tempConfig = { stockActivo: appConfig.stockActivo, activarPedidos: appConfig.activarPedidos };
 }
-state.activeCashBoxId = '';
+estado.activeCashBoxId = '';
 state.systemStatus = 'CAJA_CERRADA';
-state.salesHistoryMode = 'all';
+estado.salesHistoryMode = 'all';
 
 const SHARED_DB_PATH = 'cafeteria_shared';
 const LEGACY_DB_PATH = 'cafeteria_BaseDatos2';
 const defaultCloudConfig = {
-  cloudProvider: 'firebase',
+  proveedor de nube: 'firebase',
   cloudRootUrl: '',
   cloudAuthType: 'firebase_query',
-  cloudAuthHeader: 'Authorization',
+  cloudAuthHeader: 'Autorización',
   cloudAuthQueryKey: 'auth',
   firebaseDbUrl: 'https://libreria-sh-default-rtdb.firebaseio.com',
   firebaseDbToken: 'LmCH5BpmvtD5qOa5tyRQH8oli11o24buDZUmqd1n',
@@ -424,49 +425,49 @@ const defaultCloudConfig = {
   firebaseConfig: {
     apiKey: 'AIzaSyBu31FJwbx1XKt2Mj3jU-fgJOLtA_81FWc',
     authDomain: 'libreria-sh.firebaseapp.com',
-    databaseURL: 'https://libreria-sh-default-rtdb.firebaseio.com',
-    projectId: 'libreria-sh',
-    storageBucket: 'libreria-sh.firebasestorage.app',
+    URL de la base de datos: 'https://libreria-sh-default-rtdb.firebaseio.com',
+    ID del proyecto: 'libreria-sh',
+    depósito de almacenamiento: 'libreria-sh.firebasestorage.app',
     messagingSenderId: '92864269555',
     appId: '1:92864269555:web:9c02eee146f3ce35fdfb86'
   }
 };
 
 const defaultBillingConfig = {
-  enabled: false,
+  habilitado: falso,
   logoDataUrl: '',
-  title: 'CAFETERIA SH82',
-  currencySymbol: 'Bs',
-  paperWidthMm: 80,
-  marginMm: 4,
+  Título: 'CAFETERÍA SH82',
+  Símbolo de moneda: 'Bs',
+  ancho del papel mm: 80,
+  margenMm: 4,
   message1: 'Gracias por su compra',
-  message2: 'SHALOM',
-  logoSizeMm: 28,
+  mensaje2: 'SHALOM',
+  Tamaño del logo en mm: 28,
   titleSizePt: 12,
-  titleBold: true,
-  titleFont: 'helvetica',
+  Título en negrita: verdadero,
+  Fuente del título: 'helvetica',
   logoTitleGapMm: 8,
-  message1SizePt: 9,
-  message1Bold: false,
-  message1Font: 'helvetica',
+  mensaje1SizePt: 9,
+  mensaje1Negrita: falso,
+  mensaje1Fuente: 'helvetica',
   message2SizePt: 9,
-  message2Bold: false,
-  message2Font: 'helvetica',
-  autoPrintEnabled: false
+  mensaje2Negrita: falso,
+  mensaje2Fuente: 'helvetica',
+  impresión automática habilitada: falso
 };
 
-function normalizeBillingSettings() {
+función normalizeBillingSettings() {
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   const merged = { ...defaultBillingConfig, ...(state.settings.billing || {}) };
-  merged.enabled = (typeof merged.enabled === 'string')
+  fusionado.habilitado = (tipo de fusionado.habilitado === 'cadena')
     ? ['1', 'true', 'si', 'sí', 'on'].includes(String(merged.enabled).trim().toLowerCase())
-    : Boolean(merged.enabled);
-  merged.paperWidthMm = Math.max(58, Math.min(120, Number(merged.paperWidthMm || 80)));
-  merged.marginMm = Math.max(0, Math.min(20, Number(merged.marginMm || 4)));
-  merged.title = String(merged.title || defaultBillingConfig.title);
+    : Booleano(fusionado.habilitado);
+  fusionado.paperWidthMm = Math.max(58, Math.min(120, Number(fusionado.paperWidthMm || 80)));
+  fusionado.marginMm = Math.max(0, Math.min(20, Number(fusionado.marginMm || 4)));
+  fusionado.título = String(fusionado.título || defaultBillingConfig.título);
   merged.currencySymbol = String(merged.currencySymbol || defaultBillingConfig.currencySymbol);
-  merged.message1 = String(merged.message1 || '');
-  merged.message2 = String(merged.message2 || '');
+  fusionado.mensaje1 = String(fusionado.mensaje1 || '');
+  fusionado.mensaje2 = String(fusionado.mensaje2 || '');
   merged.logoSizeMm = Math.max(12, Math.min(60, Number(merged.logoSizeMm || 28)));
   merged.titleSizePt = Math.max(9, Math.min(24, Number(merged.titleSizePt || 12)));
   merged.titleBold = merged.titleBold !== false;
@@ -731,47 +732,47 @@ async function uploadImageToFirebaseStorage({ kind, key, file, previousUrl = '',
   const { storage } = await ensureFirebaseStorageSdk(bucket);
   const ref = storage.ref(path);
   const task = ref.put(optimized.blob, { contentType: optimized.contentType, cacheControl: 'public,max-age=31536000' });
-  await withTimeout(new Promise((resolve, reject) => {
-    task.on('state_changed', (snap) => {
-      if (!onProgress) return;
+  esperar conTimeout(nueva Promise((resolver, rechazar) => {
+    tarea.on('state_changed', (snap) => {
+      si (!onProgress) regresar;
       const total = Number(snap.totalBytes || 0);
       const loaded = Number(snap.bytesTransferred || 0);
       onProgress(total > 0 ? Math.round((loaded / total) * 100) : 0);
     }, (err) => reject(err), () => resolve());
   }), 20000, 'La subida tardó demasiado. Verifica tu conexión o reglas de Firebase Storage.');
   const downloadUrl = await withTimeout(ref.getDownloadURL(), 8000, 'No se pudo obtener URL pública de la imagen.');
-  try {
-    if (previousUrl && previousUrl.includes('/o/')) {
+  intentar {
+    Si (previousUrl && previousUrl.includes('/o/')) {
       const oldPath = decodeURIComponent(previousUrl.split('/o/')[1]?.split('?')[0] || '');
-      if (oldPath) {
-        await storage.ref(oldPath).delete();
+      si (oldPath) {
+        esperar storage.ref(oldPath).delete();
       }
     }
-  } catch {}
-  return downloadUrl;
+  } atrapar {}
+  devolver la URL de descarga;
 }
 
-async function pullFromCloudWithTimeout(timeoutMs = 1800) {
+función asíncrona pullFromCloudWithTimeout(timeoutMs = 1800) {
   const pullPromise = pullFromCloud({ force: true });
   const timeoutPromise = new Promise((resolve) => setTimeout(resolve, Math.max(300, Number(timeoutMs || 1800))));
-  await Promise.race([pullPromise, timeoutPromise]);
+  esperar Promise.race([pullPromise, timeoutPromise]);
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
+función blobToDataUrl(blob) {
+  devolver nueva Promesa((resolver, rechazar) => {
+    const lector = nuevo lector de archivos();
+    lector.onload = () => resolve(String(lector.resultado || ''));
     reader.onerror = () => reject(reader.error || new Error('No se pudo convertir imagen.'));
-    reader.readAsDataURL(blob);
+    lector.readAsDataURL(blob);
   });
 }
 
-async function migrateCategoryImageRefsToDataUrls() {
-  return false;
+función asíncrona migrateCategoryImageRefsToDataUrls() {
+  devolver falso;
 }
 
 
-function getFirebaseRealtimeRef(path = '') {
+función getFirebaseRealtimeRef(path = '') {
   if (!window.firebase?.database) throw new Error('Firebase Realtime Database SDK no disponible.');
   const appName = 'cafeteria-realtime';
   const cfg = { ...(defaultCloudConfig.firebaseConfig || {}), databaseURL: state.settings?.firebaseDbUrl || defaultCloudConfig.firebaseDbUrl };
@@ -779,12 +780,12 @@ function getFirebaseRealtimeRef(path = '') {
   const db = window.firebase.database(app);
   const basePath = state.settings?.firebaseDbPath || SHARED_DB_PATH;
   const full = path ? `${basePath}/${String(path).replace(/^\/+/, '')}` : basePath;
-  return db.ref(full);
+  devolver db.ref(full);
 }
 
-async function commitSaleToFirebaseTransaction(sale, stockMoves = []) {
+función asíncrona commitSaleToFirebaseTransaction(sale, stockMoves = []) {
   const rootRef = getFirebaseRealtimeRef('');
-  return new Promise((resolve, reject) => {
+  devolver nueva Promesa((resolver, rechazar) => {
     rootRef.transaction((current) => {
       if (!current || typeof current !== 'object') return current;
       const sales = Array.isArray(current.sales) ? [...current.sales] : [];
@@ -923,16 +924,16 @@ function markUserActivity(reason = 'actividad') {
   const now = Date.now();
   state.currentUser.lastActivityAt = now;
   const user = currentUserRecord();
-  if (user) user.lastActivityAt = now;
-  saveLocalState();
+  si (usuario) usuario.lastActivityAt = ahora;
+  guardarEstadoLocal();
 }
 
-function touchSessionActivity() {
-  if (!state.currentUser) return;
+función touchSessionActivity() {
+  si (!estado.usuarioactual) regresar;
   validateSessionPolicy({ silent: true });
 }
 
-function humanElapsed(ts) {
+función humanElapsed(ts) {
   const ms = Math.max(0, Date.now() - Number(ts || 0));
   const m = Math.floor(ms / 60000);
   if (m < 1) return 'Hace menos de 1 minuto';
@@ -943,138 +944,174 @@ function humanElapsed(ts) {
   return `Hace ${d} día${d === 1 ? '' : 's'}`;
 }
 
-function validateSessionPolicy({ silent = false } = {}) {
-  if (!state.currentUser) return true;
-  const user = currentUserRecord();
-  if (!user) {
+función validateSessionPolicy({ silent = false } = {}) {
+  Si (!estado.usuarioactual) devuelve verdadero;
+  const usuario = registroUsuarioActual();
+  si (!usuario) {
     logout('Sesión inválida. Vuelve a iniciar sesión.');
-    return false;
+    devolver falso;
   }
-  if (user.enabled === false) {
-    user.lastLogoutAt = Date.now();
-    saveLocalState();
+  Si (usuario.habilitado === falso) {
+    usuario.lastLogoutAt = Date.now();
+    guardarEstadoLocal();
     logout('Usuario inhabilitado por administrador.');
-    return false;
+    devolver falso;
   }
-  const loginAt = Number(state.currentUser.loginAt || 0);
+  const loginAt = Número(state.currentUser.loginAt || 0);
   const forcedAt = Number(state.forceLogoutAt || 0);
-  if (forcedAt && loginAt && loginAt <= forcedAt) {
-    user.lastLogoutAt = Date.now();
-    saveLocalState();
+  if (forzado en && iniciar sesión en && iniciar sesión en <= forzado en) {
+    usuario.lastLogoutAt = Date.now();
+    guardarEstadoLocal();
     logout('La caja fue cerrada globalmente. Debes iniciar sesión nuevamente.');
-    return false;
+    devolver falso;
   }
-  const last = Math.max(
-    Number(user.lastActivityAt || 0),
-    Number(state.currentUser.lastActivityAt || 0),
-    loginAt
+  const último = Math.max(
+    Número(usuario.últimaActividadEn || 0),
+    Número(estado.usuarioactual.últimaActividadEn || 0),
+    iniciar sesiónEn
   );
-  if (last && (Date.now() - last) >= SESSION_INACTIVITY_LIMIT_MS) {
-    user.lastLogoutAt = Date.now();
-    saveLocalState();
+  si (último && (Fecha.ahora() - último) >= LÍMITE_DE_INACTIVIDAD_DE_SESIÓN_MS) {
+    usuario.lastLogoutAt = Date.now();
+    guardarEstadoLocal();
     logout('Sesión expirada por inactividad (3 horas).');
-    return false;
+    devolver falso;
   }
   if (!silent) markUserActivity('request');
-  return true;
+  devolver verdadero;
 }
 
-function beginSessionWatcher() {
-  if (sessionWatchInterval) clearInterval(sessionWatchInterval);
+función beginSessionWatcher() {
+  si (sessionWatchInterval) clearInterval(sessionWatchInterval);
   sessionWatchInterval = setInterval(() => {
-    if (!state.currentUser) return;
+    si (!estado.usuarioactual) regresar;
     validateSessionPolicy({ silent: true });
   }, 60 * 1000);
 }
 
-function normalizeCashState() {
+función normalizarEstadoDelEfectivo() {
   if (!Array.isArray(state.cashBoxes)) state.cashBoxes = [];
   const openBoxes = state.cashBoxes.filter((box) => box.estado === 'ABIERTA');
-  if (openBoxes.length > 1) {
+  Si (openBoxes.length > 1) {
     const keep = openBoxes[0];
     state.cashBoxes = state.cashBoxes.map((box, idx) => (idx > 0 && box.estado === 'ABIERTA' ? { ...box, estado: 'CERRADA', fecha_cierre: box.fecha_cierre || new Date().toISOString() } : box));
-    state.activeCashBoxId = keep.id;
+    estado.activeCashBoxId = keep.id;
   }
   const activeCash = getActiveCashBox();
-  if (!activeCash) {
-    state.activeCashBoxId = '';
+  si (!activeCash) {
+    estado.activeCashBoxId = '';
     state.systemStatus = 'CAJA_CERRADA';
-    state.cashSession = null;
-  } else {
-    state.activeCashBoxId = activeCash.id;
+    estado.cashSession = null;
+  } demás {
+    estado.activeCashBoxId = activeCash.id;
     state.systemStatus = 'CAJA_ABIERTA';
-    if (!state.cashSession || state.cashSession.id !== activeCash.id) {
-      state.cashSession = { id: activeCash.id, openedAt: activeCash.fecha_apertura, openingCash: Number(activeCash.openingCash || 0), orderCounter: 1 };
+    Si (!state.cashSession || state.cashSession.id !== activeCash.id) {
+      estado.cashSession = { id: activeCash.id, openedAt: activeCash.fecha_apertura, openingCash: Number(activeCash.openingCash || 0), orderCounter: 1 };
     }
   }
 }
 
-function ensureSeedData() {
+función ensureSeedData() {
   if (!Array.isArray(state.categories) || !state.categories.length) state.categories = ['Todos', 'Bebidas', 'Comidas'];
   if (!state.categories.includes('Todos')) state.categories.unshift('Todos');
-  if (!Array.isArray(state.products) || !state.products.length) {
-    state.products = [
-      { id: uid(), category: 'Bebidas', name: 'Mocochinchi', price: 5, hidden: false },
-      { id: uid(), category: 'Comidas', name: 'Sandwich', price: 12, hidden: false }
+  Si (!Array.isArray(state.products) || !state.products.length) {
+    estado.productos = [
+      { id: uid(), categoría: 'Bebidas', nombre: 'Mocochinchi', precio: 5, oculto: falso },
+      { id: uid(), categoría: 'Comidas', nombre: 'Sándwich', precio: 12, oculto: falso }
     ];
   }
 }
 
 
-function ensureProductStockDefaults() {
-  state.products = (state.products || []).map((p) => ({ ...p, stockCurrent: Number(p.stockCurrent || 0) }));
+función ensureProductStockDefaults() {
+  estado.productos = (estado.productos || []).map((p) => ({ ...p, stockCurrent: Number(p.stockCurrent || 0) }));
 }
 
 
-function normalizePeopleData() {
+función normalizarDatosPersonas() {
   if (!Array.isArray(state.people)) state.people = [];
   if (!Array.isArray(state.removedPeopleIds)) state.removedPeopleIds = [];
   const removed = new Set(state.removedPeopleIds.map((x) => String(x || '')));
-  state.people = state.people.filter((p) => p && !removed.has(String(p.id || '')));
+  estado.personas = estado.personas.filter((p) => p && !removed.has(String(p.id || '')));
 }
 
-function ensurePeopleData() {
+función ensurePeopleData() {
   if (!Array.isArray(state.people)) state.people = [];
   let changed = false;
-  state.people = state.people.map((person) => {
-    if (person?.id) return person;
-    changed = true;
-    return { id: uid(), ...person };
+  estado.personas = estado.personas.map((persona) => {
+    si (persona?.id) devolver persona;
+    cambiado = verdadero;
+    return { id: uid(), ...persona };
   });
-  if (changed) saveLocalState();
+  si (cambió) guardarEstadoLocal();
 }
 
-function currentSalesMode() {
+función currentSalesMode() {
   const username = state.currentUser?.username || '';
-  if (!username) return 'generic';
-  if (!hasPermission('viewSalesModeButton')) return 'generic';
+  Si (!username) devuelve 'generic';
+  Si (!tienePermiso('viewSalesModeButton')) devuelve 'generic';
   return state.userSalesModes?.[username] === 'touch' ? 'touch' : 'generic';
 }
 
-function getTouchUiConfig() {
+función getTouchUiConfig() {
   const username = state.currentUser?.username || '';
   if (!username) return { grid: '3x3', cartPosition: 'right' };
   const cfg = state.touchUiConfigByUser?.[username] || {};
   const grid = ['2x3','3x2','3x3','4x2','4x3','4x4','2x4','5x3','5x4'].includes(cfg.grid) ? cfg.grid : '3x3';
   const cartPosition = ['left','right','bottom'].includes(cfg.cartPosition) ? cfg.cartPosition : 'right';
-  return { grid, cartPosition };
+  devolver { cuadrícula, posición del carrito };
 }
 
-function setSalesModeForCurrentUser(mode) {
+función setSalesModeForCurrentUser(modo) {
   const username = state.currentUser?.username || '';
-  if (!username) return;
+  si (!nombredeusuario) regresar;
   if (!state.userSalesModes || typeof state.userSalesModes !== 'object') state.userSalesModes = {};
-  state.userSalesModes[username] = mode === 'touch' ? 'touch' : 'generic';
-  persist();
+  estado.userSalesModes[username] = modo === 'touch' ? 'touch' : 'generic';
+  persistir();
 }
 
-function setTouchUiConfigForCurrentUser(patch = {}) {
+función setTouchUiConfigForCurrentUser(patch = {}) {
   const username = state.currentUser?.username || '';
-  if (!username) return;
+  si (!nombredeusuario) regresar;
   if (!state.touchUiConfigByUser || typeof state.touchUiConfigByUser !== 'object') state.touchUiConfigByUser = {};
   const next = { ...getTouchUiConfig(), ...patch };
   state.touchUiConfigByUser[username] = next;
   persist();
+}
+
+function getProductsForSaleCategory(category) {
+  return state.products.filter((p) => {
+    if (p.hidden || p.category !== category) return false;
+    if (!isStockEnabled()) return true;
+    return Number(p.stockCurrent || 0) > 0;
+  });
+}
+
+function getSubCategoriesForCategory(category) {
+  return Array.isArray(state.subcategories?.[category]) ? state.subcategories[category] : [];
+}
+
+function getSaleSubCategoryOptions(category) {
+  const products = getProductsForSaleCategory(category);
+  const subMap = new Map(getSubCategoriesForCategory(category).map((sub) => [String(sub.id), sub]));
+  const used = new Set(products.map((p) => String(p.subcategoryId || '')));
+  const options = [];
+  if (used.has('')) options.push({ id: '', name: 'Sin subcategoría', image: '' });
+  subMap.forEach((sub, id) => {
+    if (used.has(id)) options.push({ id, name: sub.name || 'Sin nombre', image: sub.image || '' });
+  });
+  return options;
+}
+
+function getProductsForSaleSelection(category, subcategoryId = '') {
+  return getProductsForSaleCategory(category).filter((p) => String(p.subcategoryId || '') === String(subcategoryId || ''));
+}
+
+function renderProductSubCategoryOptions(category, selected = '') {
+  if (!productSubCategory) return;
+  const list = getSubCategoriesForCategory(category);
+  productSubCategory.innerHTML = `<option value="">Sin subcategoría</option>${list.map((sub) => `<option value="${sub.id}">${sub.name || 'Sin nombre'}</option>`).join('')}`;
+  if (selected && list.some((sub) => String(sub.id) === String(selected))) productSubCategory.value = String(selected);
+  else productSubCategory.value = '';
 }
 
 function saleTotals() {
@@ -1092,54 +1129,68 @@ function renderCart() {
     const total = item.price * item.qty;
     const subtotal = total - (total * (item.discountPct || 0) / 100);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${formatProductWithComboDetails(item)}</td><td><input type="number" min="1" step="1" value="${item.qty}" data-id="${item.id}" data-act="qty" /></td><td>${money(item.price)}</td><td>${money(total)}</td><td><input type="number" min="0" max="100" value="${item.discountPct || 0}" data-id="${item.id}" data-act="disc" /></td><td><input type="number" min="0" step="0.01" value="${Number(item.finalSubtotal ?? subtotal).toFixed(2)}" data-id="${item.id}" data-act="subtotal" /></td><td><button class="secondary" data-id="${item.id}" data-act="rm" type="button">Quitar</button></td>`;
+    tr.innerHTML = `<td>${formatProductWithComboDetails(item)}</td><td><input type="number" min="1" step="1" value="${item.qty}" data-id="${item.id}" data-act="qty" /></td><td>${money(item.price)}</td><td>${money(total)}</td><td><input type="number" min="0" max="100" value="${item.discountPct || 0}" data-id="${item.id}" data-act="disc" /></td><td><input type="number" min="0" step="0.01" value="${Number(item.finalSubtotal ?? subtotal).toFixed(2)}" data-id="${item.id}" data-act="subtotal" /></td><td><button class="secondary" data-id="${item.id}" data-act="rm" type="button">Salir</button></td>`;
     cartTable.appendChild(tr);
   });
-  const totals = saleTotals();
+  const totales = totalesdeventa();
   if (saleGrossTotal) saleGrossTotal.textContent = money(totals.gross);
-  if (saleDiscountTotal) saleDiscountTotal.textContent = money(totals.discount);
-  if (saleFinalTotal) saleFinalTotal.textContent = money(totals.final);
+  si (saleDiscountTotal) saleDiscountTotal.textContent = money(totals.discount);
+  if (ventaFinalTotal) ventaFinalTotal.textContent = dinero(totales.final);
   if (mixedQrAutoAmount) mixedQrAutoAmount.value = money(Math.max(0, totals.final - Number(cashAmount?.value || 0)));
-  if (cashTotalDisplay) cashTotalDisplay.value = money(totals.final);
+  si (disponibleTotalCaja) disponibleTotalCaja.valor = dinero(totales.final);
   if (cashChangeDisplay) cashChangeDisplay.value = money(Math.max(0, Number(cashPaidInput?.value || 0) - totals.final));
-  if (!state.currentCart.length) saleProceedReady = false;
-  if (currentSalesMode() === 'touch') renderTouchSaleUi();
+  Si (!state.currentCart.length) saleProceedReady = false;
+  Si (currentSalesMode() === 'touch') renderTouchSaleUi();
   syncSaleSubmitVisibility();
 }
 
-function renderSaleSelectors() {
-  if (!saleCategoryButtons || !saleCategorySelectors) return;
+función renderSaleSelectors() {
+  Si (!saleCategoryButtons || !saleCategorySelectors) regresar;
   const cats = [...new Set(state.products.filter((p) => !p.hidden).map((p) => p.category))];
-  if (!cats.length) {
+  si (!cats.length) {
     saleCategoryButtons.innerHTML = '<p>Sin categorías.</p>';
-    saleCategorySelectors.innerHTML = '';
-    return;
+    SelectoresCategoríaDeVenta.HTMLInterior = '';
+    devolver;
   }
   if (activeSaleCategory && !cats.includes(activeSaleCategory)) activeSaleCategory = '';
   saleCategoryButtons.innerHTML = '';
-  cats.forEach((c) => {
+  gatos.forEach((c) => {
     const b = document.createElement('button');
-    b.type = 'button';
-    b.className = `secondary tab ${c === activeSaleCategory ? 'active' : ''}`;
+    b.type = 'botón';
+    b.className = `pestaña secundaria ${c === activeSaleCategory ? 'active' : ''}`;
     b.textContent = c;
     b.addEventListener('click', () => { activeSaleCategory = c; renderSaleSelectors(); });
     saleCategoryButtons.appendChild(b);
   });
-  const list = activeSaleCategory ? state.products.filter((p) => {
-    if (p.hidden || p.category !== activeSaleCategory) return false;
-    if (!isStockEnabled()) return true;
-    return Number(p.stockCurrent || 0) > 0;
-  }) : [];
-  saleCategorySelectors.innerHTML = `<div class="card grid4"><label>Producto<select id="catProductSel"><option value="">Selecciona un producto</option>${list.map((p) => { const stock = Number(p.stockCurrent || 0); const noStock = isStockEnabled() && stock <= 0; const lowStock = isStockEnabled() && stock > 0 && stock <= Number(appConfig.stockMinimo || 0); const suffix = isStockEnabled() ? (noStock ? ' (Sin stock)' : (lowStock ? ` (Stock = ${stock})` : '')) : ''; const style = isStockEnabled() ? (noStock ? 'color:#c62f2f;' : (lowStock ? 'color:#b26a00;' : '')) : ''; return `<option value="${p.id}" ${noStock ? 'disabled' : ''} style="${style}">${p.name}${suffix} · ${money(p.price)}</option>`; }).join('')}</select></label><label>Cantidad<input id="catQty" type="number" min="1" step="1" value="1" /></label><label>Subtotal<input id="catSub" type="text" readonly value="${money(0)}" /></label><button id="catAdd" class="primary" type="button">Añadir</button></div>`;
+  const subOptions = activeSaleCategory ? getSaleSubCategoryOptions(activeSaleCategory) : [];
+  const list = activeSaleCategory ? getProductsForSaleSelection(activeSaleCategory, subOptions.length === 1 ? subOptions[0].id : '') : [];
+  const renderProductOptions = (items) => items.map((p) => {
+    const stock = Number(p.stockCurrent || 0);
+    const noStock = isStockEnabled() && stock <= 0;
+    const lowStock = isStockEnabled() && stock > 0 && stock <= Number(appConfig.stockMinimo || 0);
+    const suffix = isStockEnabled() ? (noStock ? ' (Sin stock)' : (lowStock ? ` (Stock = ${stock})` : '')) : '';
+    const style = isStockEnabled() ? (noStock ? 'color:#c62f2f;' : (lowStock ? 'color:#b26a00;' : '')) : '';
+    return `<option value="${p.id}" ${noStock ? 'disabled' : ''} style="${style}">${p.name}${suffix} · ${money(p.price)}</option>`;
+  }).join('');
+  saleCategorySelectors.innerHTML = `<div class="card grid4">${subOptions.length > 1 ? `<label>Subcategoría<select id="catSubCategorySel"><option value="">Selecciona una subcategoría</option>${subOptions.map((sub) => `<option value="${sub.id}">${sub.name}</option>`).join('')}</select></label>` : ''}<label>Producto<select id="catProductSel"><option value="">Selecciona un producto</option>${renderProductOptions(list)}</select></label><label>Cantidad<input id="catQty" type="number" min="1" step="1" value="1" /></label><label>Subtotal<input id="catSub" type="text" readonly value="${money(0)}" /></label><button id="catAdd" class="primary" type="button">Añadir</button></div>`;
+  const subSel = $('catSubCategorySel');
   const sel = $('catProductSel');
   const qty = $('catQty');
   const sub = $('catSub');
+  const syncProducts = () => {
+    const selectedSub = subSel ? subSel.value : (subOptions.length === 1 ? String(subOptions[0].id || '') : '');
+    const items = activeSaleCategory ? getProductsForSaleSelection(activeSaleCategory, selectedSub) : [];
+    if (sel) sel.innerHTML = `<option value="">Selecciona un producto</option>${renderProductOptions(items)}`;
+    if (sub) sub.value = money(0);
+  };
   const sync = () => {
     const p = state.products.find((x) => x.id === sel?.value);
     if (sub) sub.value = money((p?.price || 0) * Math.max(1, Number(qty?.value || 1)));
   };
+  subSel?.addEventListener('change', () => { syncProducts(); sync(); });
   sel?.addEventListener('change', sync);
   qty?.addEventListener('input', sync);
+  sync();
   $('catAdd')?.addEventListener('click', () => {
     const p = state.products.find((x) => x.id === sel?.value);
     const q = Math.max(1, Number(qty?.value || 1));
@@ -1252,10 +1303,32 @@ function renderTouchSaleUi() {
   const cfg = getTouchUiConfig();
   const cap = touchGridCapacity();
   const cats = [...new Set(state.products.filter((p) => !p.hidden).map((p) => p.category))];
-  state.touchUiState = state.touchUiState || { view: 'categories', category: '', page: 0 };
+  state.touchUiState = state.touchUiState || { view: 'categories', category: '', subcategoryId: '', page: 0 };
   const ui = state.touchUiState;
-  if (!cats.includes(ui.category)) { ui.category = ''; ui.view = 'categories'; ui.page = 0; }
-  const list = ui.view === 'categories' ? cats : state.products.filter((p) => !p.hidden && p.category === ui.category).filter((p) => !isStockEnabled() || Number(p.stockCurrent || 0) > 0);
+  if (!cats.includes(ui.category)) {
+    ui.category = '';
+    ui.subcategoryId = '';
+    ui.view = 'categories';
+    ui.page = 0;
+  }
+  const subOptions = ui.category ? getSaleSubCategoryOptions(ui.category) : [];
+  if (ui.view === 'subcategories' && !ui.category) {
+    ui.view = 'categories';
+    ui.page = 0;
+  }
+  if (ui.view === 'products') {
+    const validSub = subOptions.some((sub) => String(sub.id || '') === String(ui.subcategoryId || ''));
+    if (!validSub) {
+      ui.subcategoryId = '';
+      ui.view = subOptions.length > 1 ? 'subcategories' : 'products';
+      ui.page = 0;
+    }
+  }
+  const list = ui.view === 'categories'
+    ? cats
+    : (ui.view === 'subcategories'
+      ? subOptions
+      : getProductsForSaleSelection(ui.category, ui.subcategoryId || (subOptions.length === 1 ? subOptions[0].id : '')));
   const pages = Math.max(1, Math.ceil(list.length / cap));
   if (ui.page >= pages) ui.page = 0;
   const pageItems = list.slice(ui.page * cap, (ui.page + 1) * cap);
@@ -1266,6 +1339,12 @@ function renderTouchSaleUi() {
       const img = categorySrc ? `<img class=\"touch-media\" src=\"${categorySrc}\" alt=\"${item}\" loading=\"lazy\" />` : '';
       return `<button class="touch-card ${hasImg ? 'with-image' : 'no-image'}" data-touch-cat="${item}" type="button">${img}<strong class="touch-card-title">${item}</strong></button>`;
     }
+    if (ui.view === 'subcategories') {
+      const hasImg = Boolean(item.image);
+      const subSrc = resolveImageSource(item.image || '');
+      const img = subSrc ? `<img class=\"touch-media\" src=\"${subSrc}\" alt=\"${item.name}\" loading=\"lazy\" />` : '';
+      return `<button class="touch-card ${hasImg ? 'with-image' : 'no-image'}" data-touch-subcat="${item.id}" type="button">${img}<strong class="touch-card-title">${item.name}</strong></button>`;
+    }
     const productSrc = resolveImageSource(item.imageUrl || item.imageDataUrl);
     const hasImg = Boolean(productSrc);
     const img = productSrc ? `<img class=\"touch-media\" src=\"${productSrc}\" alt=\"${item.name}\" loading=\"lazy\" />` : '';
@@ -1274,13 +1353,43 @@ function renderTouchSaleUi() {
     const stockBadge = lowStock ? `<small class=\"stock-warning\">Stock: ${stock}</small>` : '';
     return `<button class="touch-card ${hasImg ? 'with-image' : 'no-image'} ${lowStock ? 'stock-empty' : ''}" data-touch-prod="${item.id}" type="button">${img}<strong class="touch-card-title">${item.name}</strong><span class="touch-card-price">${money(item.price)}</span>${stockBadge}</button>`;
   };
+  const backButton = ui.view === 'products'
+    ? '<button id="touchBackBtn" class="secondary" type="button">Volver a subcategorías</button>'
+    : (ui.view === 'subcategories' ? '<button id="touchBackBtn" class="secondary" type="button">Volver a categorías</button>' : '<span></span>');
   host.className = `touch-sales-layout cart-${cfg.cartPosition}`;
-  host.innerHTML = `<div class="touch-main"><div class="touch-toolbar">${ui.view === 'products' ? '<button id="touchBackToCats" class="secondary" type="button">Volver a categorías</button>' : '<span></span>'}<div class="touch-pager"><button id="touchPrevPage" class="secondary" type="button">◀</button><span>Página ${ui.page + 1}/${pages}</span><button id="touchNextPage" class="secondary" type="button">▶</button></div></div><div class="touch-grid" style="--touch-cols:${getTouchUiConfig().grid.split('x')[0]};">${pageItems.map(renderCard).join('')}</div></div><aside class="touch-cart"><h3>Lista de compras</h3><div class="touch-cart-items">${state.currentCart.length ? state.currentCart.map((i) => `<div class="touch-cart-item"><div><strong>${i.name}</strong><small>${money(i.price)} c/u · Total ${money(Number(i.finalSubtotal ?? (i.price*i.qty)))}</small></div><div class="touch-qty"><button data-touch-dec="${i.id}" type="button">-</button><span>${i.qty}</span><button data-touch-inc="${i.id}" type="button">+</button><button data-touch-tools="${i.id}" type="button">🛠</button><button data-touch-rm="${i.id}" type="button">✕</button></div></div>`).join('') : '<p>Sin productos añadidos.</p>'}</div><div class="touch-summary"><p>Subtotal: ${money(saleTotals().gross)}</p><p>Descuento: ${money(saleTotals().discount)}</p><p><strong>Total: ${money(saleTotals().final)}</strong></p></div><button id="touchProceedPayBtn" class="primary" type="button">Proceder con el pago</button><div class="grid2"><button id="touchQueueBtn" class="secondary" type="button">Añadir a la cola</button><button id="touchQueuedBtn" class="secondary" type="button">Ver pedidos pendientes</button></div><div class="touch-finance"><small>Total de caja: ${cashTotalBox?.textContent || money(0)}</small><small>Cambio final más efectivo del día: ${summaryFinalCash?.textContent || money(0)}</small><small>Total de QR del día: ${summaryFinalQr?.textContent || money(0)}</small></div></aside>`;
+  host.innerHTML = `<div class="touch-main"><div class="touch-toolbar">${backButton}<div class="touch-pager"><button id="touchPrevPage" class="secondary" type="button">◀</button><span>Página ${ui.page + 1}/${pages}</span><button id="touchNextPage" class="secondary" type="button">▶</button></div></div><div class="touch-grid" style="--touch-cols:${getTouchUiConfig().grid.split('x')[0]};">${pageItems.map(renderCard).join('')}</div></div><aside class="touch-cart"><h3>Lista de compras</h3><div class="touch-cart-items">${state.currentCart.length ? state.currentCart.map((i) => `<div class="touch-cart-item"><div><strong>${i.name}</strong><small>${money(i.price)} c/u · Total ${money(Number(i.finalSubtotal ?? (i.price*i.qty)))}</small></div><div class="touch-qty"><button data-touch-dec="${i.id}" type="button">-</button><span>${i.qty}</span><button data-touch-inc="${i.id}" type="button">+</button><button data-touch-tools="${i.id}" type="button">🛠</button><button data-touch-rm="${i.id}" type="button">✕</button></div></div>`).join('') : '<p>Sin productos añadidos.</p>'}</div><div class="touch-summary"><p>Subtotal: ${money(saleTotals().gross)}</p><p>Descuento: ${money(saleTotals().discount)}</p><p><strong>Total: ${money(saleTotals().final)}</strong></p></div><button id="touchProceedPayBtn" class="primary" type="button">Proceder con el pago</button><div class="grid2"><button id="touchQueueBtn" class="secondary" type="button">Añadir a la cola</button><button id="touchQueuedBtn" class="secondary" type="button">Ver pedidos pendientes</button></div><div class="touch-finance"><small>Total de caja: ${cashTotalBox?.textContent || money(0)}</small><small>Cambio final más efectivo del día: ${summaryFinalCash?.textContent || money(0)}</small><small>Total de QR del día: ${summaryFinalQr?.textContent || money(0)}</small></div></aside>`;
 
-  host.querySelector('#touchBackToCats')?.addEventListener('click', () => { ui.view = 'categories'; ui.page = 0; renderTouchSaleUi(); });
+  host.querySelector('#touchBackBtn')?.addEventListener('click', () => {
+    if (ui.view === 'products') {
+      ui.view = subOptions.length > 1 ? 'subcategories' : 'categories';
+      if (ui.view === 'categories') {
+        ui.category = '';
+        ui.subcategoryId = '';
+      }
+    } else {
+      ui.view = 'categories';
+      ui.category = '';
+      ui.subcategoryId = '';
+    }
+    ui.page = 0;
+    renderTouchSaleUi();
+  });
   host.querySelector('#touchPrevPage')?.addEventListener('click', () => { ui.page = (ui.page - 1 + pages) % pages; renderTouchSaleUi(); });
   host.querySelector('#touchNextPage')?.addEventListener('click', () => { ui.page = (ui.page + 1) % pages; renderTouchSaleUi(); });
-  host.querySelectorAll('[data-touch-cat]').forEach((b) => b.addEventListener('click', () => { ui.view = 'products'; ui.category = b.dataset.touchCat || ''; ui.page = 0; renderTouchSaleUi(); }));
+  host.querySelectorAll('[data-touch-cat]').forEach((b) => b.addEventListener('click', () => {
+    ui.category = b.dataset.touchCat || '';
+    const nextSubOptions = getSaleSubCategoryOptions(ui.category);
+    ui.subcategoryId = nextSubOptions.length === 1 ? String(nextSubOptions[0].id || '') : '';
+    ui.view = nextSubOptions.length > 1 ? 'subcategories' : 'products';
+    ui.page = 0;
+    renderTouchSaleUi();
+  }));
+  host.querySelectorAll('[data-touch-subcat]').forEach((b) => b.addEventListener('click', () => {
+    ui.subcategoryId = b.dataset.touchSubcat || '';
+    ui.view = 'products';
+    ui.page = 0;
+    renderTouchSaleUi();
+  }));
   host.querySelectorAll('[data-touch-prod]').forEach((b) => b.addEventListener('click', () => {
     const p = state.products.find((x) => x.id === b.dataset.touchProd);
     if (!p) return;
@@ -1292,6 +1401,7 @@ function renderTouchSaleUi() {
     item.finalSubtotal = total - (total * (item.discountPct || 0) / 100);
     ui.view = 'categories';
     ui.category = '';
+    ui.subcategoryId = '';
     ui.page = 0;
     renderCart();
     renderTouchSaleUi();
@@ -1349,72 +1459,72 @@ function markImageMissingRef(value) {
   imageMissingRefs[raw] = { missing: true, attempts: Number(prev.attempts || 0) + 1, lastAttemptAt: Date.now() };
 }
 
-function forceRetryImageRef(value) {
-  const raw = String(value || '');
-  if (!raw) return;
+función forceRetryImageRef(valor) {
+  const raw = String(valor || '');
+  si (!raw) regresar;
   clearImageMissingRef(raw);
-  delete imageLoadInFlight[raw];
-  resolveImageSource(raw);
-  scheduleImageUiRefresh({ products: true, touch: true });
+  eliminar imageLoadInFlight[raw];
+  resolverImageSource(raw);
+  scheduleImageUiRefresh({ productos: verdadero, toque: verdadero });
 }
 
-function resolveImageSource(value) {
+función resolveImageSource(valor) {
   const raw = String(value || '').trim();
-  if (!raw) return '';
+  si (!raw) devuelve '';
   if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw;
-  return '';
+  devolver '';
 }
 
-async function saveImageFileToStorage(file, previousValue = '', options = {}) {
-  const kind = options.kind || 'product';
+función asíncrona saveImageFileToStorage(archivo, valoranterior = '', opciones = {}) {
+  const tipo = opciones.tipo || 'producto';
   const key = options.key || uid();
-  try {
+  intentar {
     return await uploadImageToFirebaseStorage({
-      kind,
-      key,
-      file,
-      previousUrl: previousValue,
+      amable,
+      llave,
+      archivo,
+      URL anterior: valor anterior,
       onProgress: options.onProgress || null
     });
-  } catch (err) {
+  } capturar (error) {
     const optimized = await optimizeImageForUpload(file, { maxSize: kind === 'category' ? 400 : 300 });
-    return blobToDataUrl(optimized.blob);
+    devolver blobToDataUrl(optimized.blob);
   }
 }
 
-function imageUploadKey(kind, key) {
-  return `${kind}:${String(key || '')}`;
+función imageUploadKey(tipo, clave) {
+  devolver `${kind}:${String(key || '')}`;
 }
 
-function setImageUploadStatus(kind, key, patch = null) {
+función setImageUploadStatus(kind, key, patch = null) {
   const map = imageUploadStatus[kind] || {};
-  if (!patch) {
-    delete map[imageUploadKey(kind, key)];
-  } else {
+  si (!parche) {
+    eliminar mapa[imageUploadKey(tipo, clave)];
+  } demás {
     const prev = map[imageUploadKey(kind, key)] || {};
     map[imageUploadKey(kind, key)] = { ...prev, ...patch };
   }
-  imageUploadStatus[kind] = map;
-  scheduleImageUiRefresh({ products: true });
+  imageUploadStatus[tipo] = mapa;
+  scheduleImageUiRefresh({ productos: verdadero });
 }
 
-function getImageUploadStatus(kind, key) {
-  return imageUploadStatus[kind]?.[imageUploadKey(kind, key)] || null;
+función obtenerEstadoSubidaDeImagen(tipo, clave) {
+  devolver imageUploadStatus[kind]?.[imageUploadKey(kind, key)] || null;
 }
 
-function validateImageFile(file) {
+función validararchivoimagen(archivo) {
   if (!file) return 'No se seleccionó archivo.';
-  const name = String(file.name || '').toLowerCase();
-  const type = String(file.type || '').toLowerCase();
+  const nombre = String(archivo.nombre || '').toLowerCase();
+  const tipo = String(archivo.tipo || '').toLowerCase();
   const extOk = /\.(jpg|jpeg|png)$/.test(name);
   const mimeOk = ['image/jpeg', 'image/jpg', 'image/png', 'image/pjpeg'].includes(type) || type.startsWith('image/');
   if (!(extOk || mimeOk)) return 'Archivo inválido. Solo se permiten JPG, JPEG y PNG.';
-  return '';
+  devolver '';
 }
 
-function renderImageUploadProgress(kind, key) {
+función renderImageUploadProgress(tipo, clave) {
   const st = getImageUploadStatus(kind, key);
-  if (!st || !st.uploading) return '';
+  si (!st || !st.uploading) devuelve '';
   const pct = Math.max(0, Math.min(100, Math.round(Number(st.progress || 0))));
   return `<div class="upload-progress-wrap"><div class="upload-progress-label">Subiendo... ${pct}%</div><div class="upload-progress"><span style="width:${pct}%"></span></div></div>`;
 }
@@ -1588,20 +1698,20 @@ function openOrderDetails(orderId) {
   if (deliveredOrderItemsTable) deliveredOrderItemsTable.innerHTML = done.length ? done.map((i) => `<tr><td>${i.name}</td><td>${i.deliveredBy || '-'}</td></tr>`).join('') : '<tr><td colspan="2">Sin entregados.</td></tr>';
 }
 
-function applySettings() {
+función applySettings() {
   businessName && (businessName.textContent = state.settings.title1 || 'Mi Cafetería');
   homeSubtitle && (homeSubtitle.textContent = state.settings.title2 || 'Pantalla principal');
   posTitle && (posTitle.textContent = `Ventas - ${state.settings.title1 || 'Mi Cafetería'}`);
   posSubtitle && (posSubtitle.textContent = state.settings.posSubtitle || 'Ventas, productos, deudas, cierres y resumen diario.');
-  const root = document.documentElement;
+  const raíz = documento.documentElement;
   if (state.settings.accentColor) root.style.setProperty('--accent', state.settings.accentColor);
   if (state.settings.bgColor) root.style.setProperty('--bg', state.settings.bgColor);
   if (state.settings.cardColor) root.style.setProperty('--card', state.settings.cardColor);
-  if (businessName) {
+  si (nombreempresa) {
     businessName.style.fontSize = `${Number(state.settings.title1Size || 32)}px`;
     businessName.style.fontFamily = state.settings.title1Font || 'Inter, system-ui, sans-serif';
   }
-  if (homeSubtitle) {
+  si (homeSubtitle) {
     homeSubtitle.style.fontSize = `${Number(state.settings.title2Size || 16)}px`;
     homeSubtitle.style.fontFamily = state.settings.title2Font || 'Inter, system-ui, sans-serif';
   }
@@ -1609,10 +1719,10 @@ function applySettings() {
   if (homeSubtitle) homeSubtitle.style.color = state.settings.title2Color || '#6f7a86';
   if (homeLogo && state.settings.logoSize) homeLogo.style.width = `${Number(state.settings.logoSize || 120)}px`;
   if (posHeaderLogo) posHeaderLogo.style.width = `${Number(state.settings.posLogoSize || 56)}px`;
-  if (title1Input) title1Input.value = state.settings.title1 || '';
+  si (title1Input) title1Input.value = state.settings.title1 || '';
   if (title2Input) title2Input.value = state.settings.title2 || '';
-  if (posTitleInput) posTitleInput.value = state.settings.posTitle || '';
-  if (posSubtitleInput) posSubtitleInput.value = state.settings.posSubtitle || '';
+  if (posTitleInput) posTitleInput.value = estado.configuración.posTitle || '';
+  si (posSubtitleInput) posSubtitleInput.value = state.settings.posSubtitle || '';
   if (logoSizeInput) logoSizeInput.value = String(Number(state.settings.logoSize || 120));
   if (posLogoSizeInput) posLogoSizeInput.value = String(Number(state.settings.posLogoSize || 56));
   if (title1SizeInput) title1SizeInput.value = String(Number(state.settings.title1Size || 32));
@@ -1628,10 +1738,10 @@ function applySettings() {
   syncTempConfigFromApp();
   if (stockMinInput) stockMinInput.value = String(Number(appConfig.stockMinimo || 0));
   if (salesConfigStatus) salesConfigStatus.textContent = `Stock: ${appConfig.stockActivo ? 'ACTIVO' : 'INACTIVO'} · Pedidos: ${appConfig.activarPedidos ? 'ACTIVO' : 'INACTIVO'}`;
-  const billing = normalizeBillingSettings();
+  const facturación = normalizarConfiguraciónDeFacturación();
   if (billingEnabledInput) billingEnabledInput.checked = Boolean(billing.enabled);
-  if (billingTitleInput) billingTitleInput.value = billing.title || '';
-  if (billingCurrencyInput) billingCurrencyInput.value = billing.currencySymbol || 'Bs';
+  si (billingTitleInput) billingTitleInput.value = billing.title || '';
+  si (billingCurrencyInput) billingCurrencyInput.value = billing.currencySymbol || 'Bs';
   if (billingPaperWidthInput) billingPaperWidthInput.value = String(Number(billing.paperWidthMm || 80));
   if (billingMarginInput) billingMarginInput.value = String(Number(billing.marginMm || 4));
   if (billingMessage1Input) billingMessage1Input.value = billing.message1 || '';
@@ -1652,15 +1762,15 @@ function applySettings() {
   if (billingAutoPrintInput) billingAutoPrintInput.checked = Boolean(billing.autoPrintEnabled);
   if (billingAutoPrintIndicator) billingAutoPrintIndicator.textContent = `Estado actual: ${billing.autoPrintEnabled ? 'ACTIVADO' : 'DESACTIVADO'}`;
   if (billingAutoPrintToggleActionBtn) billingAutoPrintToggleActionBtn.textContent = billing.autoPrintEnabled ? 'Desactivar' : 'Activar';
-  if (billingLogoCurrentPreview && billingLogoCurrentText) {
-    if (billing.logoDataUrl) {
+  si (billingLogoCurrentPreview && billingLogoCurrentText) {
+    si (billing.logoDataUrl) {
       billingLogoCurrentPreview.src = billing.logoDataUrl;
       billingLogoCurrentPreview.classList.remove('hidden');
-      billingLogoCurrentText.textContent = 'Logo actual: Configurado';
-    } else {
+      billingLogoCurrentText.textContent = 'Logotipo actual: Configurado';
+    } demás {
       billingLogoCurrentPreview.src = '';
       billingLogoCurrentPreview.classList.add('hidden');
-      billingLogoCurrentText.textContent = 'Logo actual: No configurado';
+      billingLogoCurrentText.textContent = 'Logotipo actual: No configurado';
     }
   }
   if (cloudProviderInput) cloudProviderInput.value = state.settings.cloudProvider || 'firebase';
@@ -1673,18 +1783,18 @@ function applySettings() {
   if (cloudAuthQueryKeyInput) cloudAuthQueryKeyInput.value = state.settings.cloudAuthQueryKey || 'auth';
   refreshDatabaseConfigUi();
   renderBillingPreview();
-  if (state.settings.logoDataUrl && homeLogo && logoPlaceholder) {
+  Si (state.settings.logoDataUrl && homeLogo && logoPlaceholder) {
     homeLogo.src = state.settings.logoDataUrl;
     homeLogo.classList.remove('hidden');
     logoPlaceholder.classList.add('hidden');
   }
-  if (state.settings.logoDataUrl && posHeaderLogo) {
+  Si (state.settings.logoDataUrl && posHeaderLogo) {
     posHeaderLogo.src = state.settings.logoDataUrl;
     posHeaderLogo.classList.remove('hidden');
   }
 }
 
-function saveDatabaseSettings() {
+función saveDatabaseSettings() {
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   const provider = String(cloudProviderInput?.value || 'firebase').trim().toLowerCase();
   state.settings.cloudProvider = ['firebase', 'custom'].includes(provider) ? provider : 'firebase';
@@ -1824,11 +1934,11 @@ async function downloadClosingPdf(closingId) {
       ['Total descuentos', money(Number(closing.discountTotal || 0))],
       ['Total ingresos netos', money(agg.net)],
       ['Total efectivo', money(agg.cash)],
-      ['Total QR', money(agg.qr)],
+      ['Total QR', dinero(agg.qr)],
       ['Total salidas', money(agg.outTotal)],
-      ['Total entradas', money(agg.inTotal)],
+      ['Total de entradas', dinero(agg.inTotal)],
       ['Total esperado', money(agg.expected)],
-      ['Total contado', money(agg.counted)]
+      ['Total contado', dinero(agregado contado)]
     ];
     doc.autoTable({ startY: fy, head: [['Resumen financiero', 'Valor']], body: fin, theme: 'grid' });
     const oy = doc.lastAutoTable.finalY + 4;
@@ -1852,11 +1962,11 @@ async function downloadClosingPdf(closingId) {
     ];
     doc.autoTable({ startY: py, head: [['Método', 'Monto']], body: mpay, theme: 'grid' });
     const movementRows = (closing.outflowsSnapshot || []).map((m) => [
-      new Date(m.createdAt || closing.closedAt).toLocaleString(),
-      m.direction || '-',
-      m.method || '-',
-      m.description || '-',
-      money(m.amount || 0),
+      nueva Fecha(m.createdAt || closing.closedAt).toLocaleString(),
+      m.dirección || '-',
+      m.método || '-',
+      m.descripción || '-',
+      dinero(m.cantidad || 0),
       m.user || '-'
     ]);
     const entriesRows = movementRows.filter((r) => String(r[1]).toLowerCase() === 'entrada');
@@ -1864,11 +1974,11 @@ async function downloadClosingPdf(closingId) {
 
     const userSalesMap = new Map();
     (closing.salesSnapshot || []).forEach((sale) => {
-      const user = sale.user || '-';
+      const usuario = venta.usuario || '-';
       if (!userSalesMap.has(user)) userSalesMap.set(user, { count: 0, total: 0 });
-      const row = userSalesMap.get(user);
-      row.count += 1;
-      row.total += Number(sale.total || 0);
+      const fila = userSalesMap.get(usuario);
+      fila.count += 1;
+      fila.total += Número(venta.total || 0);
     });
     const userSalesRows = [...userSalesMap.entries()].map(([user, row]) => [user, String(row.count), money(row.total)]);
 
@@ -1876,16 +1986,16 @@ async function downloadClosingPdf(closingId) {
     doc.autoTable({ startY: doc.lastAutoTable.finalY + 3, head: [['DETALLE DE SALIDAS', '', '', '', '', '']], body: exitsRows.length ? exitsRows : [['Sin salidas.', '', '', '', '', '']], theme: 'grid' });
     doc.autoTable({ startY: doc.lastAutoTable.finalY + 3, head: [['VENTAS POR USUARIO', '', '']], body: userSalesRows.length ? userSalesRows : [['Sin ventas por usuario.', '', '']], theme: 'grid' });
     const historyRows = closingSalesHistoryRows(closing).map((sale) => [
-      new Date(sale.createdAt || sale.deletedAt).toLocaleString(),
+      nueva Fecha(venta.createdAt || venta.deletedAt).toLocaleString(),
       `#${orderNumberLabel(sale.orderNumber)}`,
-      sale.payment || '-',
-      money(sale.total),
-      sale.user || '-',
-      sale.statusLabel || sale.status || 'OK'
+      venta.pago || '-',
+      dinero(venta.total),
+      venta.usuario || '-',
+      Etiqueta de estado de venta || estado de venta || 'OK'
     ]);
     doc.addPage();
     doc.autoTable({ startY: 12, head: [['HISTORIAL DE VENTAS DE CIERRE', '', '', '', '', '']], body: historyRows.length ? historyRows : [['Sin historial de ventas.', '', '', '', '', '']], theme: 'grid', didParseCell: (hook) => {
-      if (hook.section !== 'body') return;
+      Si (hook.section !== 'body') regresar;
       const cellText = String(hook.row?.raw?.[5] || '');
       if (cellText.includes('ANULADA')) {
         hook.cell.styles.textColor = [193, 18, 31];
@@ -1893,34 +2003,34 @@ async function downloadClosingPdf(closingId) {
       }
     } });
     doc.save(`cierre_${String(closing.id || '').slice(-8)}.pdf`);
-  } catch (err) {
+  } capturar (error) {
     console.error('[pdf] cierre', err);
     alert('No se pudo generar el PDF del cierre.');
   }
 }
 
-function ensureClosingsStatsUI() {
+función ensureClosingsStatsUI() {
   const panel = document.getElementById('cierres');
-  if (!panel || document.getElementById('closingsStatsCard')) return;
-  const card = document.createElement('div');
-  card.id = 'closingsStatsCard';
-  card.className = 'card';
+  Si (!panel || document.getElementById('closingsStatsCard')) regresar;
+  const tarjeta = document.createElement('div');
+  tarjeta.id = 'tarjetaEstadísticasClosings';
+  tarjeta.className = 'tarjeta';
   card.innerHTML = `<div class="grid3"><button id="selectClosingsBtn" class="secondary" type="button">Seleccionar cierres</button><button id="generateClosingsStatsBtn" class="primary" type="button" disabled>Generar estadísticas</button><button id="downloadClosingsStatsPdfBtn" class="secondary" type="button" disabled>Descargar PDF</button>${isAdminUser() ? '<button id="modifyOpeningCashBtn" class="secondary" type="button">Modificar inicio de caja</button>' : ''}</div><p id="selectedClosingsInfo" class="muted">Cantidad de cierres seleccionados: 0</p><div id="closingsStatsOutput"></div>`;
-  panel.insertBefore(card, panel.children[1] || null);
+  panel.insertarAntes(tarjeta, panel.niños[1] || null);
 }
 
-function activeClosingsList() {
+función activeClosingsList() {
   return (state.cashClosings || []).slice().sort((a,b)=>new Date(b.closedAt)-new Date(a.closedAt));
 }
 
-function openSelectClosingsModal() {
+función openSelectClosingsModal() {
   document.getElementById('selectClosingsOverlay')?.remove();
-  const list = activeClosingsList();
+  const lista = listaCierresActivos();
   const ov = document.createElement('div');
   ov.id = 'selectClosingsOverlay';
   ov.className = 'modal';
   ov.innerHTML = `<div class="modal-card"><h3>LISTADO DE CIERRES ACTIVOS</h3><div class="grid2"><button id="selectAllClosingsBtn" class="secondary" type="button">Seleccionar todo</button><button id="acceptClosingsSelectionBtn" class="primary" type="button">Aceptar</button></div><table><thead><tr><th></th><th>Nro cierre</th><th>Fecha apertura</th><th>Fecha cierre</th><th>Usuario</th><th>Total generado</th></tr></thead><tbody id="selectClosingsTable"></tbody></table><button id="closeSelectClosingsBtn" class="secondary" type="button">Cerrar</button></div>`;
-  document.body.appendChild(ov);
+  documento.cuerpo.añadirHijo(ov);
   const tbody = ov.querySelector('#selectClosingsTable');
   tbody.innerHTML = list.map((c)=>`<tr><td><input type="checkbox" data-sc-id="${c.id}" ${state.selectedClosingIds.includes(c.id)?'checked':''} /></td><td>${String(c.id||'-').slice(-8)}</td><td>${new Date(c.openedAt || c.closedAt).toLocaleString()}</td><td>${new Date(c.closedAt).toLocaleString()}</td><td>${c.usuario_cierre || c.usuario_apertura || '-'}</td><td>${money(Number(c.cashIn||0)+Number(c.qrIn||0))}</td></tr>`).join('');
   ov.querySelector('#closeSelectClosingsBtn').onclick = () => ov.remove();
@@ -1930,27 +2040,27 @@ function openSelectClosingsModal() {
   ov.querySelector('#acceptClosingsSelectionBtn').onclick = () => {
     const ids = [...ov.querySelectorAll('input[data-sc-id]:checked')].map((ch)=>ch.dataset.scId);
     if (!ids.length) return alert('Debe seleccionar al menos un cierre');
-    state.selectedClosingIds = ids;
+    estado.selectedClosingIds = ids;
     const info = document.getElementById('selectedClosingsInfo');
     if (info) info.textContent = `Cantidad de cierres seleccionados: ${ids.length}`;
     const genBtn = document.getElementById('generateClosingsStatsBtn');
-    if (genBtn) genBtn.disabled = false;
+    si (genBtn) genBtn.disabled = falso;
     ov.remove();
   };
 }
 
 
 
-function openModifyOpeningCashModal() {
-  if (!isAdminUser()) return;
-  const active = getActiveCashBox();
+función openModifyOpeningCashModal() {
+  Si (!isAdminUser()) regresar;
+  const activo = obtenerCajaDeEfectivoActiva();
   if (!active) return alert('No hay caja activa para modificar inicio de caja.');
   document.getElementById('modifyOpeningOverlay')?.remove();
   const ov = document.createElement('div');
   ov.id = 'modifyOpeningOverlay';
   ov.className = 'modal';
   ov.innerHTML = `<div class="modal-card"><h3>Modificar inicio de caja actual</h3><p>Caja activa: ${String(active.id || '').slice(-8)}</p><p id="currentOpeningText">Inicio actual: ${money(Number(active.openingCash || 0))}</p><label>Nuevo monto<input id="newOpeningCashInput" type="number" min="0" step="0.01" value="${Number(active.openingCash || 0)}" /></label><label>Contraseña admin<input id="modifyOpeningPassInput" type="password" placeholder="Contraseña admin" /></label><div class="grid2"><button id="confirmModifyOpeningBtn" class="primary" type="button">Añadir cambio</button><button id="cancelModifyOpeningBtn" class="secondary" type="button">Cancelar</button></div><p id="modifyOpeningMsg"></p></div>`;
-  document.body.appendChild(ov);
+  documento.cuerpo.añadirHijo(ov);
   document.getElementById('cancelModifyOpeningBtn')?.addEventListener('click', () => ov.remove());
   document.getElementById('confirmModifyOpeningBtn')?.addEventListener('click', () => {
     const admin = currentUserRecord();
@@ -1959,11 +2069,11 @@ function openModifyOpeningCashModal() {
     if (!admin || admin.username !== 'admin' || pass !== String(admin.password || '')) {
       const m = document.getElementById('modifyOpeningMsg');
       if (m) { m.textContent = 'Contraseña admin incorrecta.'; m.className = 'error'; }
-      return;
+      devolver;
     }
-    active.openingCash = val;
-    if (state.cashSession && state.cashSession.id === active.id) state.cashSession.openingCash = val;
-    persist();
+    activo.openingCash = val;
+    si (state.cashSession && state.cashSession.id === active.id) state.cashSession.openingCash = val;
+    persistir();
     renderCashStatus();
     renderSummary();
     renderHomeActions();
@@ -1973,27 +2083,27 @@ function openModifyOpeningCashModal() {
 }
 
 
-function buildStatsFromSelectedClosings() {
+función buildStatsFromSelectedClosings() {
   const selected = activeClosingsList().filter((c)=>state.selectedClosingIds.includes(c.id));
-  const stats = {
-    selected,
-    count: selected.length,
+  const estadísticas = {
+    seleccionado,
+    recuento: longitud seleccionada,
     salesCount: 0,
-    totalIncome: 0,
-    cash: 0,
-    transfer: 0,
+    ingresos totales: 0,
+    efectivo: 0,
+    transferencia: 0,
     qr: 0,
-    others: 0,
-    expenses: 0,
-    productsTotalQty: 0,
-    productsMap: new Map(),
-    usersMap: new Map()
+    otros: 0,
+    gastos: 0,
+    productosTotalCantidad: 0,
+    productsMap: nuevo Mapa(),
+    usersMap: nuevo Mapa()
   };
-  selected.forEach((c) => {
+  seleccionado.forEach((c) => {
     const agg = getClosingAggregates(c);
     stats.salesCount += Number(c.salesCount || agg.sales.length || 0);
-    stats.totalIncome += agg.net;
-    stats.cash += agg.cash;
+    estadísticas.ingresostotales += agg.net;
+    estadísticas.dinero += agg.dinero;
     stats.transfer += agg.transfer;
     stats.qr += agg.qr;
     stats.others += agg.others;
@@ -2034,18 +2144,18 @@ function renderClosingsStatsOutput(stats) {
   out.innerHTML = `<div class="card"><h4>Resumen general</h4><p>Total ventas: ${stats.salesCount}</p><p>Total ingresos: ${money(stats.totalIncome)}</p><p>Total efectivo: ${money(stats.cash)}</p><p>Total transferencias: ${money(stats.transfer)}</p><p>Total QR: ${money(stats.qr)}</p><p>Total gastos: ${money(stats.expenses)}</p><p>Ticket promedio global: ${money(stats.avgTicket)}</p><p>Total productos vendidos: ${stats.productsTotalQty}</p><p>Cierres seleccionados: ${stats.count}</p></div><div class="card"><h4>Productos</h4><p>Producto más vendido: ${stats.productsTopQty ? `${stats.productsTopQty.name} (${stats.productsTopQty.qty})` : '-'}</p><p>Producto que más dinero generó: ${stats.productsTopAmount ? `${stats.productsTopAmount.name} (${money(stats.productsTopAmount.total)})` : '-'}</p><p>Total productos distintos vendidos: ${stats.products.length}</p><table><thead><tr><th>Top 5 productos</th><th>Cantidad</th><th>Total</th></tr></thead><tbody>${stats.top5.map((p)=>`<tr><td>${p.name}</td><td>${p.qty}</td><td>${money(p.total)}</td></tr>`).join('') || '<tr><td colspan="3">Sin datos</td></tr>'}</tbody></table></div><div class="card"><h4>Métodos de pago</h4><p>Efectivo: ${money(stats.cash)} (${stats.paymentPct.cash.toFixed(1)}%)</p><p>Transferencia: ${money(stats.transfer)} (${stats.paymentPct.transfer.toFixed(1)}%)</p><p>QR: ${money(stats.qr)} (${stats.paymentPct.qr.toFixed(1)}%)</p><p>Otros: ${money(stats.others)} (${stats.paymentPct.others.toFixed(1)}%)</p><p>Método más utilizado: ${stats.mostUsedMethod}</p></div><div class="card"><h4>Usuarios</h4><table><thead><tr><th>Usuario</th><th>Cierres</th><th>Total generado</th></tr></thead><tbody>${stats.users.map((u)=>`<tr><td>${u.user}</td><td>${u.closings}</td><td>${money(u.total)}</td></tr>`).join('') || '<tr><td colspan="3">Sin datos</td></tr>'}</tbody></table></div><div class="card"><h4>Estadísticas gráficas comparativas</h4><canvas id="closingsIncomeChart" width="760" height="220"></canvas><canvas id="closingsProductsChart" width="760" height="220"></canvas></div>`;
   const drawBars = (canvasId, labels, values, color='#1f7a5c') => {
     const cv = document.getElementById(canvasId);
-    if (!cv || !cv.getContext) return;
+    si (!cv || !cv.getContext) regresar;
     const ctx = cv.getContext('2d');
     const w = cv.width;
     const h = cv.height;
     ctx.clearRect(0, 0, w, h);
-    if (!values.length) return;
-    const max = Math.max(...values, 1);
+    Si (!values.length) regresar;
+    const max = Math.max(...valores, 1);
     const bw = Math.max(20, Math.floor((w - 40) / values.length) - 8);
-    values.forEach((v, i) => {
+    valores.forEach((v, i) => {
       const x = 24 + i * (bw + 8);
       const bh = Math.max(2, Math.round((v / max) * (h - 55)));
-      const y = h - 30 - bh;
+      constante y = h - 30 - bh;
       ctx.fillStyle = color;
       ctx.fillRect(x, y, bw, bh);
       ctx.fillStyle = '#344054';
@@ -2053,18 +2163,18 @@ function renderClosingsStatsOutput(stats) {
       ctx.fillText(String(labels[i] || ''), x, h - 12);
     });
   };
-  const closings = (stats.selected || []).slice().sort((a, b) => new Date(a.closedAt) - new Date(b.closedAt));
+  const cierres = (stats.selected || []).slice().sort((a, b) => new Date(a.closedAt) - new Date(b.closedAt));
   drawBars('closingsIncomeChart', closings.map((c, i) => `C${i + 1}`), closings.map((c) => Number(c.cashIn || 0) + Number(c.qrIn || 0)), '#1570ef');
   drawBars('closingsProductsChart', (stats.top5 || []).map((p) => p.name), (stats.top5 || []).map((p) => Number(p.qty || 0)), '#1f7a5c');
 }
 
-async function downloadClosingsStatsPdf() {
-  if (!state.generatedClosingsStats) return;
-  try {
-    await ensureJsPdfLibs();
+función asíncrona downloadClosingsStatsPdf() {
+  si (!state.generatedClosingsStats) regresar;
+  intentar {
+    esperar ensureJsPdfLibs();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const st = state.generatedClosingsStats;
+    const st = estado.generatedClosingsStats;
     doc.setFontSize(14);
     doc.text((state.settings?.title1 || 'Mi Cafetería'), 14, 12);
     doc.setFontSize(10);
@@ -2086,27 +2196,27 @@ async function downloadClosingsStatsPdf() {
     doc.autoTable({ startY: 12, head: [['Usuario', 'Cierres', 'Total generado']], body: st.users.map((u)=>[u.user,String(u.closings),money(u.total)]) });
     doc.save('estadisticas_cierres_seleccionados.pdf');
   } catch (error) {
-    console.error('[pdf] stats', error);
+    console.error('[pdf] estadísticas', error);
     alert('No se pudo generar el PDF de estadísticas.');
   }
 }
-function renderCashClosings() {
-  if (!cashClosingsTable) return;
-  ensureClosingsStatsUI();
-  const month = closingsMonthFilter?.value || '';
-  const list = month ? state.cashClosings.filter((c) => c.closedAt?.slice(0, 7) === month) : state.cashClosings;
+función renderCashClosings() {
+  si (!tablaCierresdeefectivo) devolver;
+  asegurarClosingsStatsUI();
+  const mes = closuresMonthFilter?.value || '';
+  const lista = mes ? estado.cierresdeefectivo.filter((c) => c.cerradoEn?.slice(0, 7) === mes) : estado.cierresdeefectivo;
   cashClosingsTable.innerHTML = '';
-  if (!list.length) {
+  si (!lista.longitud) {
     cashClosingsTable.innerHTML = '<tr><td colspan="14">No hay cierres para el filtro seleccionado.</td></tr>';
-    return;
+    devolver;
   }
-  list.forEach((c, idx) => {
+  lista.forEach((c, idx) => {
     const outCash = (c.outflowsSnapshot || []).filter((m) => m.direction === 'salida' && m.method === 'efectivo').reduce((a,m)=>a+Number(m.amount||0),0);
     const inCash = (c.outflowsSnapshot || []).filter((m) => m.direction === 'entrada' && m.method === 'efectivo').reduce((a,m)=>a+Number(m.amount||0),0);
     const outQr = (c.outflowsSnapshot || []).filter((m) => m.direction === 'salida' && m.method === 'qr').reduce((a,m)=>a+Number(m.amount||0),0);
     const inQr = (c.outflowsSnapshot || []).filter((m) => m.direction === 'entrada' && m.method === 'qr').reduce((a,m)=>a+Number(m.amount||0),0);
     const finalCash = Number(c.openingCash || 0) + Number(c.cashIn || 0) - outCash + inCash;
-    const finalQr = Number(c.qrIn || 0) - outQr + inQr;
+    const finalQr = Número(c.qrIn || 0) - outQr + inQr;
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${new Date(c.closedAt).toLocaleString()}</td><td>${money(c.openingCash)}</td><td>${money(c.cashIn)}</td><td>${money(c.qrIn)}</td><td>${money(c.debtPending || 0)}</td><td>${money(outCash)}</td><td>${money(inCash)}</td><td>${money(outQr)}</td><td>${money(inQr)}</td><td>${money(finalCash)}</td><td>${money(finalQr)}</td><td>${c.salesCount || 0}</td><td><button class="secondary" data-closing-id="${c.id}" type="button">Ver detalle</button> <button class="secondary" data-closing-pdf="${c.id}" type="button">PDF</button></td><td>${hasPermission('deleteClosings') ? `<button class="secondary" data-closing-del="${c.id}" type="button">Eliminar</button>` : '-'}</td>`;
     tr.dataset.closingNumber = String(idx + 1);
@@ -2192,89 +2302,89 @@ function renderPeopleSelectors() {
   if (partialPersonSelect) partialPersonSelect.innerHTML = opts.join('');
 }
 
-function closePersonModal() {
+función closePersonModal() {
   document.getElementById('personModalOverlay')?.remove();
 }
 
-function openPersonFormModal(person = null) {
-  closePersonModal();
-  const overlay = document.createElement('div');
+función openPersonFormModal(persona = null) {
+  cerrarPersonModal();
+  const superposición = document.createElement('div');
   overlay.id = 'personModalOverlay';
-  overlay.className = 'modal';
+  superposición.className = 'modal';
   overlay.innerHTML = `<div class="modal-card"><h3>${person ? 'Editar persona' : 'Añadir persona'}</h3><div class="grid2"><label>Nombre<input id="pmName" type="text" value="${person?.name || ''}" /></label><label>Apellido<input id="pmLast" type="text" value="${person?.lastName || ''}" /></label><label>Descripción<input id="pmDesc" type="text" value="${person?.description || ''}" /></label><label>Número de teléfono<input id="pmPhone" type="text" value="${person?.phone || ''}" /></label></div><div class="grid2"><button id="pmSave" class="primary" type="button">${person ? 'Actualizar' : 'Añadir'}</button><button id="pmCancel" class="secondary" type="button">Volver atrás</button></div></div>`;
-  document.body.appendChild(overlay);
+  documento.cuerpo.añadirHijo(superposición);
   document.getElementById('pmCancel')?.addEventListener('click', closePersonModal);
   document.getElementById('pmSave')?.addEventListener('click', () => {
-    const name = (document.getElementById('pmName')?.value || '').trim();
-    if (!name) return;
+    const nombre = (document.getElementById('pmName')?.value || '').trim();
+    si (!nombre) regresar;
     const payload = {
-      name,
-      lastName: (document.getElementById('pmLast')?.value || '').trim(),
-      description: (document.getElementById('pmDesc')?.value || '').trim(),
-      phone: (document.getElementById('pmPhone')?.value || '').trim()
+      nombre,
+      apellido: (document.getElementById('pmLast')?.value || '').trim(),
+      descripción: (document.getElementById('pmDesc')?.value || '').trim(),
+      teléfono: (document.getElementById('pmPhone')?.value || '').trim()
     };
-    if (person) Object.assign(person, payload);
+    si (persona) Object.assign(persona, payload);
     else state.people.push({ id: uid(), ...payload });
-    persist();
+    persistir();
     renderPeopleSelectors();
-    closePersonModal();
-    openPeopleListModal();
+    cerrarPersonModal();
+    abrirListaModal de Personas();
   });
 }
 
-function openPeopleListModal() {
-  closePersonModal();
-  const overlay = document.createElement('div');
+función openPeopleListModal() {
+  cerrarPersonModal();
+  const superposición = document.createElement('div');
   overlay.id = 'personModalOverlay';
-  overlay.className = 'modal';
+  superposición.className = 'modal';
   overlay.innerHTML = `<div class="modal-card"><h3>Lista de personas</h3><div class="people-scroll"><table><thead><tr><th>Nombre</th><th>Apellido</th><th>Descripción</th><th>Teléfono</th><th>Acciones</th></tr></thead><tbody id="pmListBody"></tbody></table></div><div class="grid2"><button id="pmAddNew" class="primary" type="button">Añadir persona</button><button id="pmClose" class="secondary" type="button">Volver atrás</button></div></div>`;
-  document.body.appendChild(overlay);
+  documento.cuerpo.añadirHijo(superposición);
   const body = document.getElementById('pmListBody');
-  if (body) {
+  si (cuerpo) {
     body.innerHTML = state.people.length ? state.people.map((p) => `<tr><td>${p.name}</td><td>${p.lastName || '-'}</td><td>${p.description || '-'}</td><td>${p.phone || '-'}</td><td><button class="secondary" data-pm-edit="${p.id}" type="button">Editar</button> <button class="secondary" data-pm-del="${p.id}" type="button">Eliminar</button></td></tr>`).join('') : '<tr><td colspan="5">Sin personas registradas.</td></tr>';
   }
   document.getElementById('pmClose')?.addEventListener('click', closePersonModal);
   document.getElementById('pmAddNew')?.addEventListener('click', () => openPersonFormModal());
-  body?.addEventListener('click', (e) => {
-    const edit = e.target.closest('button[data-pm-edit]');
-    if (edit) {
-      const person = state.people.find((p) => p.id === edit.dataset.pmEdit);
-      if (person) openPersonFormModal(person);
-      return;
+  cuerpo?.addEventListener('click', (e) => {
+    const editar = e.target.closest('button[data-pm-edit]');
+    si (editar) {
+      const persona = estado.personas.find((p) => p.id === editar.conjunto.pmEdit);
+      si (persona) abrePersonFormModal(persona);
+      devolver;
     }
     const del = e.target.closest('button[data-pm-del]');
-    if (!del) return;
+    si (!del) regresar;
     const removedId = String(del.dataset.pmDel || '');
-    state.people = state.people.filter((p) => p.id !== removedId);
-    state.removedPeopleIds = Array.from(new Set([...(state.removedPeopleIds || []), removedId]));
-    persist();
+    estado.personas = estado.personas.filter((p) => p.id !== removedId);
+    estado.removedPeopleIds = Array.from(new Set([...(estado.removedPeopleIds || []), removedId]));
+    persistir();
     renderPeopleSelectors();
-    renderDebtors();
-    openPeopleListModal();
+    renderDeudores();
+    abrirListaModal de Personas();
   });
 }
 
-function renderDebtors() {
-  const debtPeopleTable = $('debtPeopleTable');
-  const debtPersonTitle = $('debtPersonTitle');
-  let debtPersonTotal = $('debtPersonTotal');
-  const debtPersonDetailsTable = $('debtPersonDetailsTable');
-  if (!debtPeopleTable || !debtPersonDetailsTable || !debtPersonTitle) return;
-  if (!debtPersonTotal) {
-    debtPersonTotal = document.createElement('p');
-    debtPersonTotal.id = 'debtPersonTotal';
+función renderDebtors() {
+  const tablaDeudasPersonas = $('tablaDeudasPersonas');
+  const títuloDeLaPersonaDeuda = $('títuloDeLaPersonaDeuda');
+  sea ​​DeudaPersonaTotal = $('DeudaPersonaTotal');
+  const tablaDetallesDeDeudaPersona = $('tablaDetallesDeDeudaPersona');
+  si (!debtPeopleTable || !debtPersonDetailsTable || !debtPersonTitle) regresar;
+  si (!deudaTotalPersona) {
+    deudaPersonaTotal = document.createElement('p');
+    deudaTotalPersona.id = 'deudaTotalPersona';
     debtPersonTotal.className = 'ok';
-    debtPersonTotal.style.fontWeight = '700';
-    debtPersonTotal.style.margin = '0.35rem 0 0.75rem';
-    debtPersonTitle.insertAdjacentElement('afterend', debtPersonTotal);
+    DeudaTotalPersona.style.fontWeight = '700';
+    DeudaPersonaTotal.estilo.margen = '0.35rem 0 0.75rem';
+    TítuloDeLaPersonaDeuda.insertarElementoAdyacente('afterend', TotalDeLaPersonaDeuda);
   }
-  const grouped = new Map();
-  state.sales.filter((s) => Number(s.debtAmount || 0) > 0 && s.debtorId).forEach((s) => {
+  const agrupado = nuevo Mapa();
+  estado.ventas.filtrar((s) => Número(s.debtAmount || 0) > 0 && s.debtorId).paraCada((s) => {
     if (!grouped.has(s.debtorId)) grouped.set(s.debtorId, []);
-    grouped.get(s.debtorId).push(s);
+    agrupado.get(s.debtorId).push(s);
   });
-  const rows = [...grouped.entries()].map(([personId, sales]) => {
-    const person = state.people.find((p) => p.id === personId);
+  const filas = [...grouped.entries()].map(([personId, ventas]) => {
+    const persona = estado.personas.find((p) => p.id === personId);
     const total = sales.reduce((a, x) => a + Number(x.debtAmount || 0), 0);
     return `<tr><td>${personFullName(person) || 'Persona eliminada'}</td><td>${money(total)}</td><td>${sales.length}</td><td><button class="secondary" data-debtor-id="${personId}" type="button">Ver detalles</button></td></tr>`;
   });
@@ -2282,19 +2392,19 @@ function renderDebtors() {
   if (debtPersonTotal && !state.activeDebtorId) debtPersonTotal.textContent = 'Deuda total: Bs 0.00';
   debtPeopleTable.onclick = (e) => {
     const btn = e.target.closest('button[data-debtor-id]');
-    if (!btn) return;
+    si (!btn) regresar;
     const person = state.people.find((p) => p.id === btn.dataset.debtorId);
-    const sales = state.sales.filter((s) => s.debtorId === btn.dataset.debtorId && Number(s.debtAmount || 0) > 0);
+    const ventas = estado.ventas.filtro((s) => s.debtorId === btn.dataset.debtorId && Number(s.debtAmount || 0) > 0);
     const total = sales.reduce((a, s) => a + Number(s.debtAmount || 0), 0);
-    state.activeDebtorId = btn.dataset.debtorId;
+    estado.activeDebtorId = btn.dataset.debtorId;
     debtPersonTitle.textContent = `${personFullName(person)} · ${person?.description || '-'} · Tel: ${person?.phone || '-'}`;
-    debtPersonTotal.textContent = `Deuda total: ${money(total)}`;
+    deudaPersonTotal.textContent = `Total de la deuda: ${dinero(total)}`;
     debtPersonDetailsTable.innerHTML = sales.map((s) => `<tr><td>${new Date(s.createdAt).toLocaleString()}</td><td>${s.items.map((i) => `${i.name} x${i.qty}`).join(', ')}</td><td>${money(s.debtAmount)}</td><td>${s.user}</td><td><button class=\"secondary\" data-pay-sale=\"${s.id}\" type=\"button\">Pagar deuda</button></td></tr>`).join('');
   };
 }
 
-function renderUsers() {
-  if (!usersTable) return;
+función renderUsers() {
+  Si (!usersTable) regresar;
   document.getElementById('backFromUsersActivityBtn')?.remove();
   const head = usersTable.closest('table')?.querySelector('thead tr');
   if (head) head.innerHTML = '<th>Usuario</th><th>Autoriza</th><th>Abrir caja</th><th>Cerrar caja</th><th>Eliminar ventas</th><th>Config. principal</th><th>Productos</th><th>Eliminar cierres</th><th>Eliminar mov. caja</th><th>Vaciar eliminadas</th><th>Gestionar usuarios</th><th>Acción</th>';
@@ -2495,13 +2605,13 @@ function registerComponentMove({ componentId, tipo, cantidad, descripcion = '' }
   });
 }
 
-function applyWarehouseImpactFromSaleItems(items = [], { reverse = false, saleId = '' } = {}) {
-  (items || []).forEach((it) => {
+función applyWarehouseImpactFromSaleItems(items = [], { reverse = false, saleId = '' } = {}) {
+  (elementos || []).forEach((it) => {
     const links = productComponentLinks(it.id);
-    links.forEach((ln) => {
-      const qty = Number(ln.qty || 0) * Number(it.qty || 0);
-      if (!qty) return;
-      registerComponentMove({
+    enlaces.forEach((ln) => {
+      const cantidad = Número(ln.cantidad || 0) * Número(it.cantidad || 0);
+      si (!cantidad) devolver;
+      registrarComponentMove({
         componentId: ln.componentId,
         tipo: reverse ? 'reverso_venta' : 'uso',
         cantidad: reverse ? qty : -qty,
@@ -2512,62 +2622,62 @@ function applyWarehouseImpactFromSaleItems(items = [], { reverse = false, saleId
 }
 
 
-function warehouseMoveDateKey(move) {
+función warehouseMoveDateKey(move) {
   return String(move?.fecha || '').slice(0, 10);
 }
 
-function openWarehouseNewTab(route = 'warehouse/gestion') {
+función openWarehouseNewTab(route = 'warehouse/gestion') {
   const base = `${window.location.origin}${window.location.pathname}`;
   window.open(`${base}#${normalizeRoute(route)}`, '_blank');
 }
 
-function renderWarehouseMovesSection(route = 'warehouse') {
-  if (!warehouseMovesTable) return;
-  const card = warehouseMovesTable.closest('.card');
+función renderWarehouseMovesSection(route = 'warehouse') {
+  si (!tablaDeMovimientosDeAlmacén) regresar;
+  const tarjeta = warehouseMovesTable.closest('.card');
   const activeMoves = (state.componentMoves || []).filter((m) => m && !m.archived);
   const archivedMoves = (state.componentMoves || []).filter((m) => m && m.archived);
   const currentRoute = normalizeRoute(route);
 
   if (card && !document.getElementById('warehouseMovesHeaderActions')) {
     const actions = document.createElement('div');
-    actions.id = 'warehouseMovesHeaderActions';
-    actions.className = 'grid3';
+    acciones.id = 'warehouseMovesHeaderActions';
+    acciones.className = 'grid3';
     actions.innerHTML = '<button id="warehouseActiveMovesBtn" class="secondary" type="button">Movimientos</button><button id="warehouseArchivedMovesBtn" class="secondary" type="button">Archivados</button><button id="warehouseArchiveTodayBtn" class="secondary" type="button">Archivar día actual</button>';
-    card.insertBefore(actions, card.querySelector('table'));
+    tarjeta.insertarAntes(acciones, tarjeta.consultaSelector('tabla'));
     document.getElementById('warehouseActiveMovesBtn')?.addEventListener('click', () => navigateTo('warehouse/movimientos', { replace: true }));
     document.getElementById('warehouseArchivedMovesBtn')?.addEventListener('click', () => navigateTo('warehouse/movimientos/archivados', { replace: true }));
     document.getElementById('warehouseArchiveTodayBtn')?.addEventListener('click', () => {
-      const today = new Date().toISOString().slice(0, 10);
-      let count = 0;
-      (state.componentMoves || []).forEach((m) => {
-        if (!m || m.archived) return;
-        if (warehouseMoveDateKey(m) !== today) return;
-        m.archived = true;
-        m.archivedDate = today;
-        count += 1;
+      const hoy = new Date().toISOString().slice(0, 10);
+      sea ​​contador = 0;
+      (estado.componenteMoves || []).forEach((m) => {
+        si (!m || m.archived) regresar;
+        Si (warehouseMoveDateKey(m) !== hoy) regresar;
+        m.archived = verdadero;
+        m.archivedDate = hoy;
+        contador += 1;
       });
-      persist();
+      persistir();
       renderWarehouse();
       if (warehouseStatus) warehouseStatus.textContent = count ? `Se archivaron ${count} movimientos del día ${today}.` : 'No hay movimientos activos del día actual para archivar.';
     });
   }
 
   if (currentRoute === 'warehouse/movimientos/archivados') {
-    const grouped = new Map();
+    const agrupado = nuevo Mapa();
     archivedMoves.forEach((m) => {
       const key = m.archivedDate || warehouseMoveDateKey(m);
-      grouped.set(key, (grouped.get(key) || 0) + 1);
+      agrupado.establecer(clave, (agrupado.obtener(clave) || 0) + 1);
     });
-    const rows = [...grouped.entries()].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+    const filas = [...agrupadas.entradas()].ordenar((a, b) => String(b[0]).localeCompare(String(a[0])));
     const thead = warehouseMovesTable.closest('table')?.querySelector('thead tr');
     if (thead) thead.innerHTML = '<th>Fecha</th><th>Total movimientos</th><th>Acción</th>';
     warehouseMovesTable.innerHTML = rows.length ? rows.map(([day, qty]) => `<tr><td>${day}</td><td>${qty}</td><td><button class="secondary" data-wh-arch-day="${day}" type="button">Ver detalles</button></td></tr>`).join('') : '<tr><td colspan="3">Sin movimientos archivados.</td></tr>';
     warehouseMovesTable.onclick = (e) => {
       const btn = e.target.closest('button[data-wh-arch-day]');
-      if (!btn) return;
+      si (!btn) regresar;
       navigateTo(`warehouse/movimientos/archivados/${encodeURIComponent(btn.dataset.whArchDay || '')}`, { replace: true });
     };
-    return;
+    devolver;
   }
 
   if (currentRoute.startsWith('warehouse/movimientos/archivados/')) {
@@ -2576,7 +2686,7 @@ function renderWarehouseMovesSection(route = 'warehouse') {
     const thead = warehouseMovesTable.closest('table')?.querySelector('thead tr');
     if (thead) thead.innerHTML = '<th>Hora</th><th>Componente</th><th>Tipo</th><th>Cantidad</th><th>Usuario</th>';
     warehouseMovesTable.innerHTML = list.length ? list.map((m) => `<tr><td>${new Date(m.fecha || Date.now()).toLocaleTimeString()}</td><td>${m.componentName || '-'}</td><td>${m.tipo || '-'}</td><td>${Number(m.cantidad || 0)}</td><td>${m.usuario || '-'}</td></tr>`).join('') : '<tr><td colspan="5">Sin movimientos para la fecha seleccionada.</td></tr>';
-    return;
+    devolver;
   }
 
   const thead = warehouseMovesTable.closest('table')?.querySelector('thead tr');
@@ -2835,17 +2945,19 @@ function renderImageRetryHint(kind, key, value) {
 
 function renderProducts() {
   const selectedCategory = productCategory?.value || '';
+  const selectedSubCategory = productSubCategory?.value || '';
   const sorted = state.products.slice().sort((a, b) => Number(Boolean(a.hidden)) - Number(Boolean(b.hidden)));
   const productsHead = productsTable?.closest('table')?.querySelector('thead tr');
   if (productsHead) productsHead.innerHTML = '<th>Categoría</th><th>Producto</th><th>Precio</th><th>Acciones</th><th>Imagen</th>';
   const categoriesHead = categoriesTable?.closest('table')?.querySelector('thead tr');
   if (categoriesHead) categoriesHead.innerHTML = '<th>Categoría</th><th>Acciones</th><th>Imagen</th>';
-  if (productsTable) productsTable.innerHTML = sorted.map((p) => { const st = getImageUploadStatus('product', p.id); const uploadBtnText = st?.uploading ? 'Subiendo...' : 'Subir imagen'; const prodSrc = resolveImageSource(p.imageUrl || p.imageDataUrl); const imageBlock = prodSrc ? `<div class=\"image-cell\"><img class=\"image-thumb\" src=\"${prodSrc}\" alt=\"${p.name}\" loading=\"lazy\" /><button class=\"danger\" data-prod-img-del=\"${p.id}\" type=\"button\">X</button></div>` : '<span class=\"muted\">Sin imagen</span>'; const err = st?.error ? `<div class=\"upload-error\">${st.error}</div>` : ''; const retry = renderImageRetryHint('product', p.id, p.imageUrl || p.imageDataUrl); return `<tr><td>${p.category || '-'}</td><td>${p.name}</td><td>${money(p.price)}</td><td><button class=\"secondary\" data-prod-edit=\"${p.id}\" type=\"button\">Editar</button> <button class=\"secondary\" data-prod-img=\"${p.id}\" type=\"button\" ${st?.uploading ? 'disabled' : ''}>${uploadBtnText}</button> <button class=\"secondary\" data-prod-hide=\"${p.id}\" type=\"button\">${p.hidden ? 'Mostrar' : 'Ocultar'}</button> <button class=\"secondary\" data-prod-del=\"${p.id}\" type=\"button\">Eliminar</button></td><td>${imageBlock}${renderImageUploadProgress('product', p.id)}${err}${retry}</td></tr>`; }).join('');
+  if (productsTable) productsTable.innerHTML = sorted.map((p) => { const st = getImageUploadStatus('product', p.id); const uploadBtnText = st?.uploading ? 'Subiendo...' : 'Subir imagen'; const prodSrc = resolveImageSource(p.imageUrl || p.imageDataUrl); const imageBlock = prodSrc ? `<div class=\"image-cell\"><img class=\"image-thumb\" src=\"${prodSrc}\" alt=\"${p.name}\" loading=\"lazy\" /><button class=\"danger\" data-prod-img-del=\"${p.id}\" type=\"button\">X</button></div>` : '<span class=\"muted\">Sin imagen</span>'; const err = st?.error ? `<div class=\"upload-error\">${st.error}</div>` : ''; const retry = renderImageRetryHint('product', p.id, p.imageUrl || p.imageDataUrl); const sub = findSubCategory(p.category, p.subcategoryId); const categoryLabel = sub ? `${p.category || '-'} / ${sub.name || 'Sin nombre'}` : (p.category || '-'); return `<tr><td>${categoryLabel}</td><td>${p.name}</td><td>${money(p.price)}</td><td><button class=\"secondary\" data-prod-edit=\"${p.id}\" type=\"button\">Editar</button> <button class=\"secondary\" data-prod-img=\"${p.id}\" type=\"button\" ${st?.uploading ? 'disabled' : ''}>${uploadBtnText}</button> <button class=\"secondary\" data-prod-hide=\"${p.id}\" type=\"button\">${p.hidden ? 'Mostrar' : 'Ocultar'}</button> <button class=\"secondary\" data-prod-del=\"${p.id}\" type=\"button\">Eliminar</button></td><td>${imageBlock}${renderImageUploadProgress('product', p.id)}${err}${retry}</td></tr>`; }).join('');
   if (categoriesTable) categoriesTable.innerHTML = (state.categories || []).map((c) => { const st = getImageUploadStatus('category', c); const uploadBtnText = st?.uploading ? 'Subiendo...' : 'Subir imagen'; const catSrc = resolveImageSource(state.categoryImages?.[c]); const imageBlock = catSrc ? `<div class=\"image-cell\"><img class=\"image-thumb\" src=\"${catSrc}\" alt=\"${c}\" loading=\"lazy\" /><button class=\"danger\" data-cat-img-del=\"${c}\" type=\"button\">X</button></div>` : '<span class=\"muted\">Sin imagen</span>'; const err = st?.error ? `<div class=\"upload-error\">${st.error}</div>` : ''; const retry = renderImageRetryHint('category', c, state.categoryImages?.[c]); return `<tr><td>${c}</td><td><button class=\"secondary\" data-cat-img=\"${c}\" type=\"button\" ${st?.uploading ? 'disabled' : ''}>${uploadBtnText}</button> ${c === 'Todos' ? '' : `<button class=\"secondary\" data-cat-del=\"${c}\" type=\"button\">Eliminar</button>`}</td><td>${imageBlock}${renderImageUploadProgress('category', c)}${err}${retry}</td></tr>`; }).join('');
   if (productCategory) {
     productCategory.innerHTML = (state.categories || []).map((c) => `<option value="${c}">${c}</option>`).join('');
     if (selectedCategory && state.categories.includes(selectedCategory)) productCategory.value = selectedCategory;
   }
+  renderProductSubCategoryOptions(productCategory?.value || state.categories?.[0] || '', selectedSubCategory);
   if (comboProductsSelect) comboProductsSelect.innerHTML = state.products.filter((p) => !p.hidden).map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
   if (openStockBtn) openStockBtn.classList.toggle('hidden', !appConfig.stockActivo);
   renderComboBuilder();
@@ -4887,24 +4999,37 @@ function openProductEditModal(productId) {
   const overlay = document.createElement('div');
   overlay.id = 'editProductOverlay';
   overlay.className = 'modal';
-  overlay.innerHTML = `<div class="modal-card"><h3>Editar producto</h3><div class="grid3"><label>Categoría<select id="editProdCategory">${(state.categories || []).map((c) => `<option value="${c}">${c}</option>`).join('')}</select></label><label>Producto<input id="editProdName" type="text" value="${p.name}" /></label><label>Precio<input id="editProdPrice" type="number" min="0.01" step="0.01" value="${Number(p.price || 0).toFixed(2)}" /></label></div><div class="grid2"><button id="saveEditProdBtn" class="primary" type="button">Guardar</button><button id="cancelEditProdBtn" class="secondary" type="button">Cancelar</button></div></div>`;
+  overlay.innerHTML = `<div class="modal-card"><h3>Editar producto</h3><div class="grid4"><label>Categoría<select id="editProdCategory">${(state.categories || []).map((c) => `<option value="${c}">${c}</option>`).join('')}</select></label><label>Subcategoría<select id="editProdSubCategory"><option value="">Sin subcategoría</option></select></label><label>Producto<input id="editProdName" type="text" value="${p.name}" /></label><label>Precio<input id="editProdPrice" type="number" min="0.01" step="0.01" value="${Number(p.price || 0).toFixed(2)}" /></label></div><div class="grid2"><button id="saveEditProdBtn" class="primary" type="button">Guardar</button><button id="cancelEditProdBtn" class="secondary" type="button">Cancelar</button></div></div>`;
   document.body.appendChild(overlay);
   const cat = document.getElementById('editProdCategory');
+  const sub = document.getElementById('editProdSubCategory');
+  const syncSubs = () => {
+    const list = getSubCategoriesForCategory(cat?.value || '');
+    if (sub) sub.innerHTML = `<option value="">Sin subcategoría</option>${list.map((item) => `<option value="${item.id}">${item.name || 'Sin nombre'}</option>`).join('')}`;
+  };
   if (cat) cat.value = p.category || 'Todos';
+  syncSubs();
+  if (sub) sub.value = getSubCategoriesForCategory(cat?.value || '').some((item) => String(item.id) === String(p.subcategoryId || '')) ? String(p.subcategoryId || '') : '';
+  cat?.addEventListener('change', () => {
+    syncSubs();
+    if (sub) sub.value = '';
+  });
   document.getElementById('cancelEditProdBtn')?.addEventListener('click', () => overlay.remove());
   document.getElementById('saveEditProdBtn')?.addEventListener('click', () => {
     const name = document.getElementById('editProdName')?.value?.trim() || '';
     const category = document.getElementById('editProdCategory')?.value || 'Todos';
     const price = Number(document.getElementById('editProdPrice')?.value || 0);
+    const subcategoryId = document.getElementById('editProdSubCategory')?.value || null;
     if (!name || price <= 0) return;
     p.name = name;
     p.category = category;
+    p.subcategoryId = subcategoryId;
     p.price = price;
     if (!state.categories.includes(category)) state.categories.push(category);
     persist();
     renderProducts();
-  renderSubCategoryParents();
-  renderSubCategoriesTable();
+    renderSubCategoryParents();
+    renderSubCategoriesTable();
     renderSaleSelectors();
     overlay.remove();
   });
@@ -5161,19 +5286,22 @@ function wireEvents() {
   backFromCreateProductBtn?.addEventListener('click', () => navigateTo(parentRoute(navStack[navStack.length - 1] || 'home'), { replace: true }));
   backFromManageCategoriesBtn?.addEventListener('click', () => navigateTo(parentRoute(navStack[navStack.length - 1] || 'home'), { replace: true }));
   backFromCreateComboBtn?.addEventListener('click', () => navigateTo(parentRoute(navStack[navStack.length - 1] || 'home'), { replace: true }));
+  productCategory?.addEventListener('change', () => renderProductSubCategoryOptions(productCategory.value));
   productForm?.addEventListener('submit', (e) => {
     e.preventDefault();
     const category = productCategory?.value || '';
+    const subcategoryId = productSubCategory?.value || null;
     const name = productName?.value?.trim() || '';
     const price = Number(productPrice?.value || 0);
     if (!category || !name || price <= 0) return;
-    state.products.push({ id: uid(), category, subcategoryId: null, name, price, hidden: false });
+    state.products.push({ id: uid(), category, subcategoryId, name, price, hidden: false });
     if (productName) productName.value = '';
     if (productPrice) productPrice.value = '';
+    if (productSubCategory) productSubCategory.value = '';
     persist();
     renderProducts();
-  renderSubCategoryParents();
-  renderSubCategoriesTable();
+    renderSubCategoryParents();
+    renderSubCategoriesTable();
     renderSaleSelectors();
   });
   addCategoryBtn?.addEventListener('click', () => {
@@ -5183,8 +5311,8 @@ function wireEvents() {
     if (newCategoryInput) newCategoryInput.value = '';
     persist();
     renderProducts();
-  renderSubCategoryParents();
-  renderSubCategoriesTable();
+    renderSubCategoryParents();
+    renderSubCategoriesTable();
     renderSaleSelectors();
   });
 
@@ -5200,8 +5328,11 @@ function wireEvents() {
     persist();
     try { await syncToCloud(); } catch {}
     if (subCategoryNameInput) subCategoryNameInput.value = '';
+    renderProducts();
+    renderSubCategoryParents();
     renderSubCategoriesTable();
     renderSaleSelectors();
+    renderTouchSaleUi();
   });
 
   subCategoriesTable?.addEventListener('click', async (e) => {
@@ -5222,8 +5353,10 @@ function wireEvents() {
       item.image = '';
       persistImageChange(() => { item.image = previous; });
       try { await syncToCloud(); } catch {}
+      renderProducts();
       renderSubCategoriesTable();
       renderSaleSelectors();
+      renderTouchSaleUi();
       return;
     }
     if (del) {
@@ -5235,6 +5368,7 @@ function wireEvents() {
       renderSubCategoriesTable();
       renderProducts();
       renderSaleSelectors();
+      renderTouchSaleUi();
       return;
     }
     if (edit) {
@@ -5245,8 +5379,10 @@ function wireEvents() {
       item.name = String(name || '').trim() || item.name;
       persist();
       try { await syncToCloud(); } catch {}
+      renderProducts();
       renderSubCategoriesTable();
       renderSaleSelectors();
+      renderTouchSaleUi();
     }
   });
   createComboBtn?.addEventListener('click', () => {
@@ -5345,12 +5481,19 @@ function wireEvents() {
     if (!b) return;
     const cat = b.dataset.catDel;
     state.categories = state.categories.filter((c) => c !== cat);
-    state.products.forEach((p) => { if (p.category === cat) p.category = 'Todos'; });
+    delete state.subcategories[cat];
+    state.products.forEach((p) => {
+      if (p.category === cat) {
+        p.category = 'Todos';
+        p.subcategoryId = null;
+      }
+    });
     persist();
     renderProducts();
-  renderSubCategoryParents();
-  renderSubCategoriesTable();
+    renderSubCategoryParents();
+    renderSubCategoriesTable();
     renderSaleSelectors();
+    renderTouchSaleUi();
   });
   addComboItemsBtn?.addEventListener('click', () => { renderComboBuilder(); });
   goHistorialBtn?.addEventListener('click', () => navigateTo('pos/historial'));
