@@ -615,9 +615,9 @@ function saveLocalState() {
 }
 
 const SYNC_MODULES = {
-  config: ['settings', 'stockConfig', 'systemStatus', 'activeCashBoxId', 'cashSession', 'userSalesModes', 'touchUiConfigByUser', 'orderCounters', 'moduleUpdatedAt', 'moduleHydration'],
+  config: ['settings', 'stockConfig', 'systemStatus', 'activeCashBoxId', 'userSalesModes', 'touchUiConfigByUser', 'moduleUpdatedAt', 'moduleHydration'],
   catalog: ['products', 'categories', 'subcategories', 'categoryImages'],
-  operations: ['sales', 'deletedSales', 'cashClosings', 'cashBoxes', 'outflows', 'debtPayments', 'people', 'generalCash', 'generalClosings', 'deletedRecordIds'],
+  operations: ['sales', 'deletedSales', 'cashClosings', 'cashBoxes', 'cashSession', 'outflows', 'debtPayments', 'people', 'generalCash', 'generalClosings', 'orderCounters', 'deletedRecordIds'],
   warehouse: ['components', 'componentLinks', 'componentMoves'],
   history: ['sales', 'deletedSales', 'cashClosings', 'generalClosings', 'debtPayments']
 };
