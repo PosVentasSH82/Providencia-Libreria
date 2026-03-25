@@ -652,10 +652,10 @@ function markModulesDirty(modules = ALL_MODULES) {
   });
 }
 
-function shouldBlockModuleWrite(moduleName, remoteUpdatedAt = {}, localUpdatedAt = {}) {
-  const remoteTs = Number(remoteUpdatedAt?.[moduleName] || 0);
-  const localTs = Number(localUpdatedAt?.[moduleName] || 0);
-  return remoteTs > localTs;
+function shouldBlockModuleWrite(moduleName, payload, remoteModule = {}) {
+  const isEmpty = !payload || (typeof payload === 'object' && Object.keys(payload).length === 0);
+  if (isEmpty) return true;
+  return false;
 }
 
 function buildStateIndexes() {
@@ -664,6 +664,31 @@ function buildStateIndexes() {
     salesById: Object.fromEntries((state.sales || []).filter((x) => x?.id).map((x) => [String(x.id), x])),
     usersById: Object.fromEntries((state.users || []).filter((x) => x?.username).map((x) => [String(x.username), x]))
   };
+}
+
+function modulePayload(moduleName, source = state) {
+  const out = {};
+  (SYNC_MODULES[moduleName] || []).forEach((key) => { out[key] = source[key]; });
+  return out;
+}
+
+function localModulesSnapshot() {
+  return {
+    config: modulePayload('config'),
+    catalog: modulePayload('catalog'),
+    operations: modulePayload('operations'),
+    warehouse: modulePayload('warehouse'),
+    history: modulePayload('history')
+  };
+}
+
+function flattenModulesData(modulesData = {}, extras = {}) {
+  const flat = {};
+  Object.values(modulesData || {}).forEach((moduleChunk) => {
+    if (!moduleChunk || typeof moduleChunk !== 'object') return;
+    Object.entries(moduleChunk).forEach(([k, v]) => { flat[k] = v; });
+  });
+  return { ...flat, ...extras };
 }
 
 function scheduleCloudSync(delayMs = 1200) {
@@ -900,9 +925,11 @@ async function commitSaleToFirebaseTransaction(sale, stockMoves = []) {
   return new Promise((resolve, reject) => {
     rootRef.transaction((current) => {
       if (!current || typeof current !== 'object') return current;
-      const sales = Array.isArray(current.sales) ? [...current.sales] : [];
+      const operations = (current.operations && typeof current.operations === 'object') ? { ...current.operations } : {};
+      const catalog = (current.catalog && typeof current.catalog === 'object') ? { ...current.catalog } : {};
+      const sales = Array.isArray(operations.sales) ? [...operations.sales] : (Array.isArray(current.sales) ? [...current.sales] : []);
       if (sales.some((x) => String(x?.id || '') === String(sale.id))) return;
-      const products = Array.isArray(current.products) ? [...current.products] : [];
+      const products = Array.isArray(catalog.products) ? [...catalog.products] : (Array.isArray(current.products) ? [...current.products] : []);
       for (const move of (stockMoves || [])) {
         const idx = products.findIndex((p) => String(p?.id || '') === String(move.id || ''));
         if (idx < 0) return;
@@ -912,8 +939,8 @@ async function commitSaleToFirebaseTransaction(sale, stockMoves = []) {
       }
       sales.unshift({ ...sale });
       const out = { ...current };
-      out.sales = sales;
-      out.products = products;
+      out.operations = { ...operations, sales };
+      out.catalog = { ...catalog, products };
       out.updatedAt = Date.now();
       return out;
     }, (error, committed, snapshot) => {
@@ -928,7 +955,7 @@ async function commitSaleToFirebaseTransaction(sale, stockMoves = []) {
 
 async function reserveNextOrderNumber(cashBoxId) {
   if (!cashBoxId) throw new Error('No hay caja activa para generar correlativo.');
-  const counterRef = getFirebaseRealtimeRef(`orderCounters/${encodeURIComponent(cashBoxId)}`);
+  const counterRef = getFirebaseRealtimeRef(`operations/orderCounters/${encodeURIComponent(cashBoxId)}`);
   return new Promise((resolve, reject) => {
     counterRef.transaction((current) => (Number(current || 0) + 1), (error, committed, snapshot) => {
       if (error) return reject(error);
@@ -949,11 +976,6 @@ function persist(options = {}) {
   saveLocalState();
   if (options.sync === false) return;
   if (!cloudHydrated) return;
-  const pending = [...dirtyModules].filter((moduleName) => Boolean(state.moduleHydration?.[moduleName]));
-  if (!pending.length) {
-    addSyncLog('warn', 'Se bloqueó sync: módulos aún no hidratados.', { dirty: [...dirtyModules], hydration: state.moduleHydration || {} });
-    return;
-  }
   scheduleCloudSync(document.hidden ? 1200 : 600);
 }
 
@@ -4220,8 +4242,7 @@ async function syncToCloud(options = {}) {
     const remoteUpdatedAt = Number(remoteData?.updatedAt || 0);
     const payload = snapshotPayload();
     const remoteModuleUpdatedAt = remoteData?.moduleUpdatedAt || {};
-    const localModuleUpdatedAt = payload.moduleUpdatedAt || {};
-    const candidateModules = [...dirtyModules].filter((moduleName) => Boolean(state.moduleHydration?.[moduleName]));
+    const candidateModules = [...dirtyModules];
     if (!candidateModules.length) {
       addSyncLog('info', 'Sync omitido: no hay módulos hidratados pendientes.', { dirty: [...dirtyModules] });
       return;
@@ -4243,15 +4264,15 @@ async function syncToCloud(options = {}) {
     }
     const patchBody = {};
     candidateModules.forEach((moduleName) => {
-      if (shouldBlockModuleWrite(moduleName, remoteModuleUpdatedAt, localModuleUpdatedAt)) {
+      const moduleData = modulePayload(moduleName, payload);
+      if (shouldBlockModuleWrite(moduleName, moduleData, remoteData?.[moduleName] || {})) {
         addSyncLog('warn', 'Write bloqueado por versión remota más reciente.', {
           module: moduleName,
-          remoteUpdatedAt: remoteModuleUpdatedAt[moduleName],
-          localUpdatedAt: localModuleUpdatedAt[moduleName]
+          reason: 'payload vacío'
         });
         return;
       }
-      (SYNC_MODULES[moduleName] || []).forEach((key) => { patchBody[key] = payload[key]; });
+      patchBody[moduleName] = moduleData;
       patchBody.moduleUpdatedAt = { ...(patchBody.moduleUpdatedAt || remoteModuleUpdatedAt), [moduleName]: Number(payload.moduleUpdatedAt?.[moduleName] || Date.now()) };
     });
     if (!Object.keys(patchBody).length) {
@@ -4291,12 +4312,23 @@ async function syncToCloud(options = {}) {
 
 function applyCloudData(data, options = {}) {
   if (!data || !data.updatedAt) return;
-  if (!options.force && data.updatedAt <= state.lastSyncAt) return;
-  state.lastSyncAt = Number(data.updatedAt || Date.now());
-  state.forceLogoutAt = Number(data.forceLogoutAt || 0);
-  ALL_MODULES.forEach((moduleName) => validateAndNormalizeModuleData(moduleName, data));
+  const modulesData = (data.config || data.catalog || data.operations || data.warehouse || data.history)
+    ? { config: data.config || null, catalog: data.catalog || null, operations: data.operations || null, warehouse: data.warehouse || null, history: data.history || null }
+    : null;
+  if (modulesData) {
+    const nonEmptyModules = Object.values(modulesData).filter((chunk) => chunk && typeof chunk === 'object' && Object.keys(chunk).length > 0);
+    if (!nonEmptyModules.length) return;
+  }
+  const incoming = modulesData
+    ? flattenModulesData(modulesData, { updatedAt: data.updatedAt, moduleUpdatedAt: data.moduleUpdatedAt, moduleHydration: data.moduleHydration, forceLogoutAt: data.forceLogoutAt })
+    : data;
+  if (!incoming || (typeof incoming === 'object' && Object.keys(incoming).length === 0)) return;
+  if (!options.force && incoming.updatedAt <= state.lastSyncAt) return;
+  state.lastSyncAt = Number(incoming.updatedAt || Date.now());
+  state.forceLogoutAt = Number(incoming.forceLogoutAt || 0);
+  ALL_MODULES.forEach((moduleName) => validateAndNormalizeModuleData(moduleName, incoming));
   ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings','moduleUpdatedAt','moduleHydration'].forEach((k) => {
-    if (data[k] !== undefined) state[k] = data[k];
+    if (incoming[k] !== undefined) state[k] = incoming[k];
   });
   if (state.currentUser && !validateSessionPolicy({ silent: true })) return;
   normalizeCloudSettings();
@@ -4341,9 +4373,15 @@ async function startFirebaseRealtimeListener() {
   const applyChild = (snap) => {
     const key = String(snap.key || '');
     if (!key) return;
-    state[key] = snap.val();
-    const moduleName = MODULE_BY_KEY[key];
-    if (moduleName) markModulesHydrated([moduleName]);
+    const val = snap.val();
+    if (ALL_MODULES.includes(key) && val && typeof val === 'object') {
+      Object.entries(val).forEach(([innerKey, innerVal]) => { state[innerKey] = innerVal; });
+      markModulesHydrated([key]);
+    } else {
+      state[key] = val;
+      const moduleName = MODULE_BY_KEY[key];
+      if (moduleName) markModulesHydrated([moduleName]);
+    }
     buildStateIndexes();
     refreshAfterRealtimeChange();
   };
@@ -4380,7 +4418,28 @@ async function pullFromCloud(options = {}) {
     }
     const r = await fetch(rootUrl, { headers: { ...conn.headers } });
     const data = await r.json();
-    applyCloudData(data, { force: options.force });
+    const modulesData = (data?.config || data?.catalog || data?.operations || data?.warehouse || data?.history)
+      ? { config: data.config || {}, catalog: data.catalog || {}, operations: data.operations || {}, warehouse: data.warehouse || {}, history: data.history || {} }
+      : null;
+    if (modulesData) {
+      if (!modulesData || Object.keys(modulesData).length === 0) return;
+      const currentModules = localModulesSnapshot();
+      const mergedModules = { ...currentModules };
+      for (const key in modulesData) {
+        if (modulesData[key] && Object.keys(modulesData[key]).length > 0) {
+          mergedModules[key] = modulesData[key];
+        }
+      }
+      const mergedFlat = flattenModulesData(mergedModules, {
+        updatedAt: Number(data?.updatedAt || Date.now()),
+        moduleUpdatedAt: data?.moduleUpdatedAt || state.moduleUpdatedAt || {},
+        moduleHydration: data?.moduleHydration || state.moduleHydration || {},
+        forceLogoutAt: Number(data?.forceLogoutAt || state.forceLogoutAt || 0)
+      });
+      applyCloudData(mergedFlat, { force: options.force });
+    } else {
+      applyCloudData(data, { force: options.force });
+    }
     console.info('[cloud] estado sincronizado', { activeCashBoxId: state.activeCashBoxId, systemStatus: state.systemStatus });
     const currentRoute = normalizeRoute(window.location.hash || '#home');
     const inSettingsBranch = currentRoute === 'settings' || currentRoute.startsWith('settings/');
@@ -4395,6 +4454,31 @@ async function pullFromCloud(options = {}) {
   }
   })();
   return cloudPullInFlight;
+}
+
+async function ensureCloudSeedData() {
+  const conn = cloudConnection();
+  if (!conn.rootUrl) return;
+  try {
+    const resp = await fetch(conn.rootUrl, { headers: { ...conn.headers } });
+    const remote = (await safeJsonResponse(resp)) || {};
+    const needed = ['config', 'catalog', 'operations', 'warehouse', 'history'];
+    const missing = needed.filter((moduleName) => !remote?.[moduleName] || typeof remote[moduleName] !== 'object');
+    if (!missing.length) return;
+    const localModules = localModulesSnapshot();
+    const seedPayload = {};
+    missing.forEach((moduleName) => { seedPayload[moduleName] = localModules[moduleName] || {}; });
+    seedPayload.updatedAt = Date.now();
+    seedPayload.moduleUpdatedAt = { ...(remote?.moduleUpdatedAt || {}), ...(state.moduleUpdatedAt || {}) };
+    await fetch(conn.rootUrl, {
+      method: 'PATCH',
+      headers: { ...conn.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(seedPayload)
+    });
+    addSyncLog('info', 'Seed modular aplicado en nube.', { missing });
+  } catch (err) {
+    addSyncLog('warn', 'No se pudo aplicar seed modular en nube.', { error: String(err?.message || err) });
+  }
 }
 
 function renderHomeActions() {
@@ -4606,6 +4690,7 @@ function startGeneralCashSession({ efectivo = 0, qr = 0 } = {}) {
   };
   closeGeneralCashModal();
   persist();
+  Promise.resolve(syncToCloud()).catch((err) => console.error('[sync] open general cash failed', err));
   refreshFinancialViews();
   renderHomeActions();
   setMsg(homeMessage, 'Caja general abierta correctamente.');
@@ -4723,6 +4808,7 @@ async function startCashSession(openingAmount = 0) {
   closeStartCashModal();
   startCashCard?.classList.add('hidden');
   persist();
+  Promise.resolve(syncToCloud()).catch((err) => console.error('[sync] open cash failed', err));
   renderHomeActions();
   renderTabsByPermissions();
   renderCashStatus();
@@ -4953,6 +5039,7 @@ async function registerSale() {
     });
   }
   renderWarehouse();
+  Promise.resolve(syncToCloud()).catch((err) => console.error('[sync] sale sync failed', err));
   if (saleSuccessTitle) saleSuccessTitle.textContent = `Venta realizada exitosamente · Pedido #${orderNumberLabel(sale.orderNumber)}`;
   saleProceedReady = false;
   saleSuccessModal?.classList.remove('hidden');
@@ -5868,6 +5955,7 @@ function wireEvents() {
     if (productPrice) productPrice.value = '';
     if (productSubCategory) productSubCategory.value = '';
     persist();
+    Promise.resolve(syncToCloud()).catch((err) => console.error('[sync] create product failed', err));
     renderProducts();
     renderSubCategoryParents();
     renderSubCategoriesTable();
@@ -6492,6 +6580,7 @@ async function bootstrap() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pullFromCloud({ force: true }); });
   window.addEventListener('online', () => { pullFromCloud({ force: true }); });
   Promise.resolve().then(() => migrateCategoryImageRefsToDataUrls()).catch(() => {});
+  await ensureCloudSeedData();
   await startFirebaseRealtimeListener();
   if (state.currentUser && validSession) {
     try { await pullFromCloud({ force: true }); } catch {}
