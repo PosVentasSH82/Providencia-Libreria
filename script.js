@@ -17,7 +17,11 @@ const state = {
   touchUiConfigByUser: {},
   categoryImages: {},
   orderCounters: {},
-  deletedRecordIds: {"cashClosings":[],"sales":[]}
+  deletedRecordIds: {"cashClosings":[],"sales":[]},
+  moduleUpdatedAt: {},
+  moduleHydration: {},
+  indexes: { productsById: {}, salesById: {}, usersById: {} },
+  syncLogs: []
 };
 
 let sessionWatchInterval = null;
@@ -60,7 +64,8 @@ function loadLocalState() {
     [
       'products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig',
       'outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','forceLogoutAt',
-      'userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings'
+      'userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings',
+      'moduleUpdatedAt','moduleHydration','syncLogs'
     ].forEach((key) => {
       if (data[key] !== undefined) state[key] = data[key];
     });
@@ -531,6 +536,26 @@ function normalizeCloudSettings() {
   normalizeBillingSettings();
 }
 
+function validateAndNormalizeModuleData(moduleName, data) {
+  const next = data;
+  if (moduleName === 'catalog') {
+    if (!Array.isArray(next.products)) next.products = [];
+    if (!Array.isArray(next.categories)) next.categories = [];
+    if (!next.subcategories || typeof next.subcategories !== 'object') next.subcategories = {};
+  }
+  if (moduleName === 'operations') {
+    ['sales', 'deletedSales', 'cashClosings', 'cashBoxes', 'outflows', 'debtPayments', 'people', 'generalClosings'].forEach((k) => {
+      if (!Array.isArray(next[k])) next[k] = [];
+    });
+    if (!next.generalCash || typeof next.generalCash !== 'object') next.generalCash = { efectivo: 0, qr: 0, estado: 'CERRADA', openedAt: '', closedAt: '', openedBy: '', closedBy: '', updatedAt: 0 };
+  }
+  if (moduleName === 'warehouse') {
+    if (!Array.isArray(next.components)) next.components = [];
+    if (!next.componentLinks || typeof next.componentLinks !== 'object') next.componentLinks = {};
+    if (!Array.isArray(next.componentMoves)) next.componentMoves = [];
+  }
+}
+
 normalizeCloudSettings();
 
 
@@ -561,7 +586,12 @@ function formatProductWithComboDetails(item) {
   const lines = [...grouped.entries()].map(([n,q]) => `<li>${q} ${n}</li>`).join('');
   return `${item?.name || ''}<ul class="combo-lines">${lines}</ul>`;
 }
-function uid() { return `${Date.now()}_${Math.floor(Math.random() * 9999)}`; }
+function uid() {
+  const now = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  const user = String(state.currentUser?.username || 'anon').replace(/[^a-z0-9_-]/gi, '').slice(0, 12) || 'anon';
+  return `${now}_${user}_${rand}`;
+}
 function setMsg(el, txt, ok = true) { if (!el) return; el.textContent = txt; el.className = ok ? 'ok' : 'error'; }
 
 function refreshFinancialViews() {
@@ -582,6 +612,58 @@ function saveLocalState() {
   } catch (err) {
     console.error('[local] no se pudo guardar estado local', err);
   }
+}
+
+const SYNC_MODULES = {
+  config: ['settings', 'stockConfig', 'systemStatus', 'activeCashBoxId', 'cashSession', 'userSalesModes', 'touchUiConfigByUser', 'orderCounters', 'moduleUpdatedAt', 'moduleHydration'],
+  catalog: ['products', 'categories', 'subcategories', 'categoryImages'],
+  operations: ['sales', 'deletedSales', 'cashClosings', 'cashBoxes', 'outflows', 'debtPayments', 'people', 'generalCash', 'generalClosings', 'deletedRecordIds'],
+  warehouse: ['components', 'componentLinks', 'componentMoves'],
+  history: ['sales', 'deletedSales', 'cashClosings', 'generalClosings', 'debtPayments']
+};
+const MODULE_BY_KEY = Object.entries(SYNC_MODULES).reduce((acc, [moduleName, keys]) => {
+  keys.forEach((key) => { acc[key] = moduleName; });
+  return acc;
+}, {});
+const ALL_MODULES = Object.keys(SYNC_MODULES);
+const dirtyModules = new Set();
+let cloudSyncInFlight = null;
+
+function addSyncLog(level, message, meta = {}) {
+  const entry = { id: uid(), at: new Date().toISOString(), level, message, meta };
+  state.syncLogs = Array.isArray(state.syncLogs) ? state.syncLogs : [];
+  state.syncLogs.unshift(entry);
+  if (state.syncLogs.length > 120) state.syncLogs.length = 120;
+  const fn = level === 'error' ? console.error : (level === 'warn' ? console.warn : console.info);
+  fn('[sync-log]', message, meta);
+}
+
+function markModulesHydrated(modules = []) {
+  state.moduleHydration = state.moduleHydration || {};
+  modules.forEach((moduleName) => { state.moduleHydration[moduleName] = true; });
+}
+
+function markModulesDirty(modules = ALL_MODULES) {
+  const at = Date.now();
+  state.moduleUpdatedAt = state.moduleUpdatedAt || {};
+  modules.forEach((moduleName) => {
+    dirtyModules.add(moduleName);
+    state.moduleUpdatedAt[moduleName] = at;
+  });
+}
+
+function shouldBlockModuleWrite(moduleName, remoteUpdatedAt = {}, localUpdatedAt = {}) {
+  const remoteTs = Number(remoteUpdatedAt?.[moduleName] || 0);
+  const localTs = Number(localUpdatedAt?.[moduleName] || 0);
+  return remoteTs > localTs;
+}
+
+function buildStateIndexes() {
+  state.indexes = {
+    productsById: Object.fromEntries((state.products || []).filter((x) => x?.id).map((x) => [String(x.id), x])),
+    salesById: Object.fromEntries((state.sales || []).filter((x) => x?.id).map((x) => [String(x.id), x])),
+    usersById: Object.fromEntries((state.users || []).filter((x) => x?.username).map((x) => [String(x.username), x]))
+  };
 }
 
 function scheduleCloudSync(delayMs = 1200) {
@@ -863,9 +945,15 @@ async function reserveNextOrderNumber(cashBoxId) {
 
 function persist(options = {}) {
   if (state.currentUser && !validateSessionPolicy({ silent: false })) return;
+  markModulesDirty(Array.isArray(options.modules) && options.modules.length ? options.modules : ALL_MODULES);
   saveLocalState();
   if (options.sync === false) return;
   if (!cloudHydrated) return;
+  const pending = [...dirtyModules].filter((moduleName) => Boolean(state.moduleHydration?.[moduleName]));
+  if (!pending.length) {
+    addSyncLog('warn', 'Se bloqueó sync: módulos aún no hidratados.', { dirty: [...dirtyModules], hydration: state.moduleHydration || {} });
+    return;
+  }
   scheduleCloudSync(document.hidden ? 1200 : 600);
 }
 
@@ -1195,7 +1283,7 @@ function getSaleSearchProducts() {
 function renderProductSubCategoryOptions(category, selected = '') {
   if (!productSubCategory) return;
   const list = getSubCategoriesForCategory(category);
-  productSubCategory.innerHTML = `<option value="">Sin subcategoría</option>${list.map((sub) => `<option value="${sub.id}">${sub.name || 'Sin nombre'}</option>`).join('')}`;
+  productSubCategory.innerHTML = `<option value="">Sin asignar</option>${list.map((sub) => `<option value="${sub.id}">${sub.name || 'Sin nombre'}</option>`).join('')}`;
   if (selected && list.some((sub) => String(sub.id) === String(selected))) productSubCategory.value = String(selected);
   else productSubCategory.value = '';
 }
@@ -3178,7 +3266,18 @@ function renderImageRetryHint(kind, key, value) {
 function renderProducts() {
   const selectedCategory = productCategory?.value || '';
   const selectedSubCategory = productSubCategory?.value || '';
-  const sorted = state.products.slice().sort((a, b) => Number(Boolean(a.hidden)) - Number(Boolean(b.hidden)));
+  const sorted = state.products.slice().sort((a, b) => {
+    if (productSortMode === 'name') return String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
+    if (productSortMode === 'price') return Number(a.price || 0) - Number(b.price || 0);
+    if (productSortMode === 'category') {
+      const catA = productCategoryExportLabel(a);
+      const catB = productCategoryExportLabel(b);
+      const byCat = String(catA).localeCompare(String(catB), 'es', { sensitivity: 'base' });
+      if (byCat !== 0) return byCat;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
+    }
+    return 0;
+  }).sort((a, b) => Number(Boolean(a.hidden)) - Number(Boolean(b.hidden)));
   const productsHead = productsTable?.closest('table')?.querySelector('thead tr');
   if (productsHead) productsHead.innerHTML = '<th>Categoría</th><th>Producto</th><th>Precio</th><th>Acciones</th><th>Imagen</th>';
   const categoriesHead = categoriesTable?.closest('table')?.querySelector('thead tr');
@@ -3298,8 +3397,8 @@ function renderSummary() {
     if (summaryOutQr) summaryOutQr.textContent = money(0);
     if (summaryInQr) summaryInQr.textContent = money(0);
     if (summaryFinalQr) summaryFinalQr.textContent = money(0);
-    if (cashTotalBox) cashTotalBox.textContent = money(totalsGeneral.efectivo);
-    if (qrTotalBox) qrTotalBox.textContent = money(totalsGeneral.qr);
+    if (cashTotalBox) cashTotalBox.textContent = money(0);
+    if (qrTotalBox) qrTotalBox.textContent = money(0);
     return;
   }
 
@@ -3328,12 +3427,12 @@ function renderSummary() {
   const netCash = metrics.netCash;
   if (summaryNetCash) summaryNetCash.textContent = money(netCash);
   if (summaryFinalCash) summaryFinalCash.textContent = money(cashInTotal + inCash - outCash);
-  if (cashTotalBox) cashTotalBox.textContent = money(totalsGeneral.efectivo);
+  if (cashTotalBox) cashTotalBox.textContent = money(netCash);
   if (summaryQr) summaryQr.textContent = money(qrInTotal);
   if (summaryOutQr) summaryOutQr.textContent = money(outQr);
   if (summaryInQr) summaryInQr.textContent = money(inQr);
   if (summaryFinalQr) summaryFinalQr.textContent = money(metrics.netQr);
-  if (qrTotalBox) qrTotalBox.textContent = money(totalsGeneral.qr);
+  if (qrTotalBox) qrTotalBox.textContent = money(metrics.netQr);
 }
 
 
@@ -4025,6 +4124,8 @@ function snapshotPayload() {
     deletedRecordIds: state.deletedRecordIds || { cashClosings: [], sales: [] },
     generalCash: state.generalCash || { efectivo: 0, qr: 0, estado: 'CERRADA', openedAt: '', closedAt: '', openedBy: '', closedBy: '', updatedAt: 0 },
     generalClosings: state.generalClosings || [],
+    moduleUpdatedAt: state.moduleUpdatedAt || {},
+    moduleHydration: state.moduleHydration || {},
     updatedAt: Date.now()
   };
 }
@@ -4105,6 +4206,8 @@ async function safeJsonResponse(resp) {
 async function syncToCloud(options = {}) {
   const conn = cloudConnection();
   if (!conn.rootUrl) throw buildCloudSyncError('No hay URL de nube configurada.', { code: 'CLOUD_URL_MISSING' });
+  if (cloudSyncInFlight) return cloudSyncInFlight;
+  cloudSyncInFlight = (async () => {
   try {
     const url = conn.rootUrl;
     const remoteResp = await fetch(url, { headers: { ...conn.headers, 'X-Firebase-ETag': 'true' } });
@@ -4116,6 +4219,13 @@ async function syncToCloud(options = {}) {
     const remoteEtag = remoteResp.headers.get('ETag');
     const remoteUpdatedAt = Number(remoteData?.updatedAt || 0);
     const payload = snapshotPayload();
+    const remoteModuleUpdatedAt = remoteData?.moduleUpdatedAt || {};
+    const localModuleUpdatedAt = payload.moduleUpdatedAt || {};
+    const candidateModules = [...dirtyModules].filter((moduleName) => Boolean(state.moduleHydration?.[moduleName]));
+    if (!candidateModules.length) {
+      addSyncLog('info', 'Sync omitido: no hay módulos hidratados pendientes.', { dirty: [...dirtyModules] });
+      return;
+    }
     const mergedDeleted = mergeDeletedRecordIds(remoteData?.deletedRecordIds, payload.deletedRecordIds);
     payload.deletedRecordIds = mergedDeleted;
     payload.sales = mergeByIdPreferRemote(remoteData?.sales, payload.sales, mergedDeleted.sales);
@@ -4131,27 +4241,51 @@ async function syncToCloud(options = {}) {
       payload.systemStatus = remoteData.systemStatus;
       payload.cashSession = remoteData.cashSession || payload.cashSession;
     }
-    if (remoteUpdatedAt && Number(payload.updatedAt || 0) <= remoteUpdatedAt) payload.updatedAt = remoteUpdatedAt + 1;
-    const putHeaders = { ...conn.headers, 'Content-Type': 'application/json' };
-    if (remoteEtag) putHeaders['if-match'] = remoteEtag;
-    const putResp = await fetch(url, { method: 'PUT', headers: putHeaders, body: JSON.stringify(payload) });
-    if (putResp.status === 412) {
+    const patchBody = {};
+    candidateModules.forEach((moduleName) => {
+      if (shouldBlockModuleWrite(moduleName, remoteModuleUpdatedAt, localModuleUpdatedAt)) {
+        addSyncLog('warn', 'Write bloqueado por versión remota más reciente.', {
+          module: moduleName,
+          remoteUpdatedAt: remoteModuleUpdatedAt[moduleName],
+          localUpdatedAt: localModuleUpdatedAt[moduleName]
+        });
+        return;
+      }
+      (SYNC_MODULES[moduleName] || []).forEach((key) => { patchBody[key] = payload[key]; });
+      patchBody.moduleUpdatedAt = { ...(patchBody.moduleUpdatedAt || remoteModuleUpdatedAt), [moduleName]: Number(payload.moduleUpdatedAt?.[moduleName] || Date.now()) };
+    });
+    if (!Object.keys(patchBody).length) {
+      addSyncLog('info', 'Sync omitido: todos los módulos estaban desfasados frente al remoto.', { candidateModules });
+      return;
+    }
+    patchBody.updatedAt = Math.max(Date.now(), remoteUpdatedAt + 1);
+    const patchHeaders = { ...conn.headers, 'Content-Type': 'application/json' };
+    if (remoteEtag) patchHeaders['if-match'] = remoteEtag;
+    const patchResp = await fetch(url, { method: 'PATCH', headers: patchHeaders, body: JSON.stringify(patchBody) });
+    if (patchResp.status === 412) {
       if (Number(options.attempt || 0) < 2) return syncToCloud({ ...options, attempt: Number(options.attempt || 0) + 1 });
       if (syncStatus) syncStatus.textContent = 'Conflicto detectado. Reintenta sincronizar.';
       throw buildCloudSyncError('Conflicto de sincronización.', { status: 412, code: 'SYNC_CONFLICT' });
     }
-    if (!putResp.ok) {
-      const putText = await putResp.text().catch(() => '');
-      throw buildCloudSyncError(`No se pudo guardar en la nube (${putResp.status}).`, { status: putResp.status, responseText: putText });
+    if (!patchResp.ok) {
+      const patchText = await patchResp.text().catch(() => '');
+      throw buildCloudSyncError(`No se pudo guardar en la nube (${patchResp.status}).`, { status: patchResp.status, responseText: patchText });
     }
-    state.lastSyncAt = Number(payload.updatedAt || Date.now());
+    candidateModules.forEach((moduleName) => dirtyModules.delete(moduleName));
+    state.lastSyncAt = Number(patchBody.updatedAt || Date.now());
     saveLocalState();
     if (syncStatus) syncStatus.textContent = 'Sincronización enviada.';
+    addSyncLog('info', 'Sincronización PATCH aplicada.', { modules: candidateModules });
   } catch (err) {
     const detail = describeCloudSyncError(err);
     if (syncStatus) syncStatus.textContent = `Error de sincronización: ${detail}`;
+    addSyncLog('error', 'Error en sincronización.', { detail });
     throw err;
+  } finally {
+    cloudSyncInFlight = null;
   }
+  })();
+  return cloudSyncInFlight;
 }
 
 
@@ -4160,7 +4294,8 @@ function applyCloudData(data, options = {}) {
   if (!options.force && data.updatedAt <= state.lastSyncAt) return;
   state.lastSyncAt = Number(data.updatedAt || Date.now());
   state.forceLogoutAt = Number(data.forceLogoutAt || 0);
-  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings'].forEach((k) => {
+  ALL_MODULES.forEach((moduleName) => validateAndNormalizeModuleData(moduleName, data));
+  ['products','sales','deletedSales','cashClosings','cashSession','users','settings','categories','subcategories','people','stockConfig','outflows','debtPayments','components','componentLinks','componentMoves','cashBoxes','activeCashBoxId','systemStatus','userSalesModes','touchUiConfigByUser','categoryImages','orderCounters','deletedRecordIds','generalCash','generalClosings','moduleUpdatedAt','moduleHydration'].forEach((k) => {
     if (data[k] !== undefined) state[k] = data[k];
   });
   if (state.currentUser && !validateSessionPolicy({ silent: true })) return;
@@ -4169,6 +4304,8 @@ function applyCloudData(data, options = {}) {
   normalizeDebtPaymentsData();
   normalizePeopleData();
   normalizeCashState();
+  buildStateIndexes();
+  markModulesHydrated(ALL_MODULES);
   const removedClosings = new Set((state.deletedRecordIds?.cashClosings || []).map((x) => String(x)));
   const removedSales = new Set((state.deletedRecordIds?.sales || []).map((x) => String(x)));
   if (removedClosings.size) state.cashClosings = (state.cashClosings || []).filter((x) => !removedClosings.has(String(x?.id || '')));
@@ -4205,6 +4342,9 @@ async function startFirebaseRealtimeListener() {
     const key = String(snap.key || '');
     if (!key) return;
     state[key] = snap.val();
+    const moduleName = MODULE_BY_KEY[key];
+    if (moduleName) markModulesHydrated([moduleName]);
+    buildStateIndexes();
     refreshAfterRealtimeChange();
   };
   const removeChild = (snap) => {
@@ -5413,13 +5553,13 @@ function openProductEditModal(productId) {
   const overlay = document.createElement('div');
   overlay.id = 'editProductOverlay';
   overlay.className = 'modal';
-  overlay.innerHTML = `<div class="modal-card"><h3>Editar producto</h3><div class="grid4"><label>Categoría<select id="editProdCategory">${(state.categories || []).map((c) => `<option value="${c}">${c}</option>`).join('')}</select></label><label>Subcategoría<select id="editProdSubCategory"><option value="">Sin subcategoría</option></select></label><label>Producto<input id="editProdName" type="text" value="${p.name}" /></label><label>Precio<input id="editProdPrice" type="number" min="0.01" step="0.01" value="${Number(p.price || 0).toFixed(2)}" /></label></div><div class="grid2"><button id="saveEditProdBtn" class="primary" type="button">Guardar</button><button id="cancelEditProdBtn" class="secondary" type="button">Cancelar</button></div></div>`;
+  overlay.innerHTML = `<div class="modal-card"><h3>Editar producto</h3><div class="grid4"><label>Categoría<select id="editProdCategory">${(state.categories || []).map((c) => `<option value="${c}">${c}</option>`).join('')}</select></label><label>Subcategoría<select id="editProdSubCategory"><option value="">Sin asignar</option></select></label><label>Producto<input id="editProdName" type="text" value="${p.name}" /></label><label>Precio<input id="editProdPrice" type="number" min="0.01" step="0.01" value="${Number(p.price || 0).toFixed(2)}" /></label></div><div class="grid2"><button id="saveEditProdBtn" class="primary" type="button">Guardar</button><button id="cancelEditProdBtn" class="secondary" type="button">Cancelar</button></div></div>`;
   document.body.appendChild(overlay);
   const cat = document.getElementById('editProdCategory');
   const sub = document.getElementById('editProdSubCategory');
   const syncSubs = () => {
     const list = getSubCategoriesForCategory(cat?.value || '');
-    if (sub) sub.innerHTML = `<option value="">Sin subcategoría</option>${list.map((item) => `<option value="${item.id}">${item.name || 'Sin nombre'}</option>`).join('')}`;
+    if (sub) sub.innerHTML = `<option value="">Sin asignar</option>${list.map((item) => `<option value="${item.id}">${item.name || 'Sin nombre'}</option>`).join('')}`;
   };
   if (cat) cat.value = p.category || 'Todos';
   syncSubs();
@@ -5536,6 +5676,7 @@ function wireEvents() {
   openNewSaleBtn?.addEventListener('click', () => {
     state.currentCart = [];
     activeSaleCategory = '';
+    saleSearchQuery = '';
     if (paymentType) paymentType.value = 'efectivo';
     if (cashAmount) cashAmount.value = '';
     if (partialPaidAmount) partialPaidAmount.value = '';
@@ -5550,9 +5691,15 @@ function wireEvents() {
     debtFields?.classList.add('hidden');
     partialFields?.classList.add('hidden');
     renderSaleSelectors();
+    renderTouchSaleUi();
     renderCart();
     syncSaleUiModeVisibility();
     syncSaleSubmitVisibility();
+  });
+  document.getElementById('saleSearchInput')?.addEventListener('input', (e) => {
+    saleSearchQuery = String(e?.target?.value || '').trim();
+    renderSaleSelectors();
+    renderTouchSaleUi();
   });
   paymentType?.addEventListener('change', () => {
     const t = paymentType.value;
@@ -5684,6 +5831,11 @@ function wireEvents() {
   openManageCategoriesBtn?.addEventListener('click', () => navigateTo('pos/productos-categorias'));
   openCreateComboBtn?.addEventListener('click', () => { navigateTo('pos/productos-combo'); });
   openProductsListBtn?.addEventListener('click', () => navigateTo('pos/productos-lista'));
+  document.getElementById('applyProductSortBtn')?.addEventListener('click', () => {
+    const selected = String(document.getElementById('productSortMode')?.value || 'category');
+    productSortMode = ['category', 'name', 'price'].includes(selected) ? selected : 'category';
+    renderProducts();
+  });
   backFromProductsListBtn?.addEventListener('click', () => navigateTo(parentRoute(navStack[navStack.length - 1] || 'home'), { replace: true }));
   openStockBtn?.addEventListener('click', () => navigateTo('stock'));
   backFromStockBtn?.addEventListener('click', () => stockCard?.classList.add('hidden'));
@@ -6302,9 +6454,14 @@ async function bootstrap() {
   if (!state.deletedRecordIds || typeof state.deletedRecordIds !== 'object') state.deletedRecordIds = { cashClosings: [], sales: [] };
   if (!Array.isArray(state.deletedRecordIds.cashClosings)) state.deletedRecordIds.cashClosings = [];
   if (!Array.isArray(state.deletedRecordIds.sales)) state.deletedRecordIds.sales = [];
+  if (!state.moduleUpdatedAt || typeof state.moduleUpdatedAt !== 'object') state.moduleUpdatedAt = {};
+  if (!state.moduleHydration || typeof state.moduleHydration !== 'object') state.moduleHydration = {};
+  if (!Array.isArray(state.syncLogs)) state.syncLogs = [];
   normalizeWarehouseData();
   normalizeDebtPaymentsData();
   normalizeCashState();
+  buildStateIndexes();
+  markModulesHydrated(ALL_MODULES);
   syncAppConfig();
   saveLocalState();
   applySettings();
