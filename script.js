@@ -4279,6 +4279,15 @@ async function syncToCloud(options = {}) {
       addSyncLog('info', 'Sync omitido: todos los módulos estaban desfasados frente al remoto.', { candidateModules });
       return;
     }
+    const writePayload = { ...patchBody };
+    if (writePayload.operations && typeof writePayload.operations === 'object') {
+      const operationsChunk = writePayload.operations;
+      const hasCriticalOps = operationsChunk.cashBoxes !== undefined && operationsChunk.generalCash !== undefined && operationsChunk.cashSession !== undefined;
+      if (!hasCriticalOps) {
+        addSyncLog('warn', 'Payload operations incompleto para caja.', { keys: Object.keys(operationsChunk || {}) });
+      }
+    }
+    console.log('[SYNC][WRITE]', JSON.stringify(writePayload));
     patchBody.updatedAt = Math.max(Date.now(), remoteUpdatedAt + 1);
     const patchHeaders = { ...conn.headers, 'Content-Type': 'application/json' };
     if (remoteEtag) patchHeaders['if-match'] = remoteEtag;
@@ -4418,6 +4427,14 @@ async function pullFromCloud(options = {}) {
     }
     const r = await fetch(rootUrl, { headers: { ...conn.headers } });
     const data = await r.json();
+    console.log('[SYNC][READ]', JSON.stringify({
+      updatedAt: Number(data?.updatedAt || 0),
+      hasConfig: Boolean(data?.config),
+      hasCatalog: Boolean(data?.catalog),
+      hasOperations: Boolean(data?.operations),
+      hasWarehouse: Boolean(data?.warehouse),
+      hasHistory: Boolean(data?.history)
+    }));
     const modulesData = (data?.config || data?.catalog || data?.operations || data?.warehouse || data?.history)
       ? { config: data.config || {}, catalog: data.catalog || {}, operations: data.operations || {}, warehouse: data.warehouse || {}, history: data.history || {} }
       : null;
@@ -4675,7 +4692,7 @@ function openCloseGeneralCashModal() {
   document.getElementById('generalCashCloseConfirmBtn')?.addEventListener('click', () => closeGeneralCashSession(document.getElementById('generalCashClosePassInput')?.value || ''));
 }
 
-function startGeneralCashSession({ efectivo = 0, qr = 0 } = {}) {
+async function startGeneralCashSession({ efectivo = 0, qr = 0 } = {}) {
   if (!canManageGeneralCash()) return setMsg(homeMessage, 'No tienes permiso para abrir la caja general.', false);
   if (isGeneralCashOpen()) return setMsg(homeMessage, 'La caja general ya está abierta.', false);
   state.generalCash = {
@@ -4690,7 +4707,12 @@ function startGeneralCashSession({ efectivo = 0, qr = 0 } = {}) {
   };
   closeGeneralCashModal();
   persist();
-  Promise.resolve(syncToCloud()).catch((err) => console.error('[sync] open general cash failed', err));
+  try {
+    console.log('[SYNC][TRIGGER] abrir caja general');
+    await syncToCloud();
+  } catch (err) {
+    console.error('[sync] open general cash failed', err);
+  }
   refreshFinancialViews();
   renderHomeActions();
   setMsg(homeMessage, 'Caja general abierta correctamente.');
@@ -4808,7 +4830,12 @@ async function startCashSession(openingAmount = 0) {
   closeStartCashModal();
   startCashCard?.classList.add('hidden');
   persist();
-  Promise.resolve(syncToCloud()).catch((err) => console.error('[sync] open cash failed', err));
+  try {
+    console.log('[SYNC][TRIGGER] abrir caja del día');
+    await syncToCloud();
+  } catch (err) {
+    console.error('[sync] open cash failed', err);
+  }
   renderHomeActions();
   renderTabsByPermissions();
   renderCashStatus();
@@ -4933,7 +4960,12 @@ async function closeCashSession() {
     }
     switchToPos('ventas');
     showHome();
-    Promise.resolve(syncToCloud()).catch((err) => console.error('[cash] sync close failed', err));
+    try {
+      console.log('[SYNC][TRIGGER] cerrar caja del día');
+      await syncToCloud();
+    } catch (err) {
+      console.error('[cash] sync close failed', err);
+    }
     setMsg(homeMessage, 'La caja del día ha sido cerrada.', false);
   } catch (err) {
     console.error('[cash] closeCashSession error', err);
