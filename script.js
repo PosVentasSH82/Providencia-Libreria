@@ -1776,6 +1776,14 @@ function nextProductSortOrderForCategory(category = '') {
   return Math.max(...list.map((p) => Number(p.sortOrder || 0)), 0) + 1;
 }
 
+function restoreDeletedCategory(category = '') {
+  const key = String(category || '').trim();
+  if (!key) return;
+  state.deletedRecordIds = state.deletedRecordIds || { cashClosings: [], sales: [], products: [], categories: [] };
+  if (!Array.isArray(state.deletedRecordIds.categories)) state.deletedRecordIds.categories = [];
+  state.deletedRecordIds.categories = state.deletedRecordIds.categories.filter((item) => String(item || '').trim() !== key);
+}
+
 function isProductStockTracked(product) {
   return isStockEnabled() && product?.stockEnabled !== false;
 }
@@ -1953,7 +1961,7 @@ function openSalesModeScreen() {
   const overlay = document.createElement('div');
   overlay.id = 'salesModeOverlay';
   overlay.className = 'modal';
-  overlay.innerHTML = `<div class="modal-card"><h3>Modo de ventas</h3><div class="grid2"><button id="activateGenericModeBtn" class="${mode === 'generic' ? 'primary' : 'secondary'}" type="button">${mode === 'generic' ? 'Desactivar' : 'Activar'} modo genérico</button><button id="activateTouchModeBtn" class="${mode === 'touch' ? 'primary' : 'secondary'}" type="button">${mode === 'touch' ? 'Desactivar' : 'Activar'} modo táctil</button></div><div id="touchModeConfigWrap" class="${mode === 'touch' ? '' : 'hidden'}"><h4>Configuración modo táctil</h4><div class="grid2"><label>Tamaño o estilo visual<select id="touchGridPresetSel"><option value="2x3">2x3</option><option value="3x2">3x2</option><option value="3x3">3x3</option><option value="4x2">4x2</option><option value="4x3">4x3</option><option value="4x4">4x4</option><option value="2x4">2x4</option><option value="5x3">5x3</option><option value="5x4">5x4</option></select></label><label>Lista de compras<select id="touchCartPosSel"><option value="left">Lateral izquierdo</option><option value="right">Lateral derecho</option><option value="bottom">Abajo</option></select></label></div></div><button id="closeSalesModeOverlayBtn" class="secondary" type="button">Cerrar</button></div>`;
+  overlay.innerHTML = `<div class="modal-card"><h3>Modo de ventas</h3><div class="grid2"><button id="activateGenericModeBtn" class="${mode === 'generic' ? 'primary' : 'secondary'}" type="button">${mode === 'generic' ? 'Desactivar' : 'Activar'} modo genérico</button><button id="activateTouchModeBtn" class="${mode === 'touch' ? 'primary' : 'secondary'}" type="button">${mode === 'touch' ? 'Desactivar' : 'Activar'} modo táctil</button></div><div id="touchModeConfigWrap" class="${mode === 'touch' ? '' : 'hidden'}"><h4>Configuración modo táctil</h4><div class="grid2"><label>Tamaño o estilo visual<select id="touchGridPresetSel"><option value="2x3">2x3</option><option value="3x2">3x2</option><option value="3x3">3x3</option><option value="3x4">3x4</option><option value="4x2">4x2</option><option value="4x3">4x3</option><option value="4x4">4x4</option><option value="2x4">2x4</option><option value="5x3">5x3</option><option value="5x4">5x4</option></select></label><label>Lista de compras<select id="touchCartPosSel"><option value="left">Lateral izquierdo</option><option value="right">Lateral derecho</option><option value="bottom">Abajo</option></select></label></div></div><button id="closeSalesModeOverlayBtn" class="secondary" type="button">Cerrar</button></div>`;
   document.body.appendChild(overlay);
   const gridSel = document.getElementById('touchGridPresetSel');
   const posSel = document.getElementById('touchCartPosSel');
@@ -2013,7 +2021,7 @@ function renderTouchSaleUi() {
   const cats = getOrderedCategories({ includeHidden: false }).filter((category) => state.products.some((p) => !p.hidden && p.category === category));
   state.touchUiState = state.touchUiState || { view: 'categories', category: '', page: 0 };
   const ui = state.touchUiState;
-  if (!cats.includes(ui.category)) { ui.category = ''; ui.view = 'categories'; ui.page = 0; }
+  if (ui.view === 'products' && !cats.includes(ui.category)) { ui.category = ''; ui.view = 'categories'; ui.page = 0; }
   const list = ui.view === 'categories' ? cats : state.products.filter((p) => !p.hidden && p.category === ui.category).filter((p) => !isStockEnabled() || !isProductStockTracked(p) || Number(p.stockCurrent || 0) > 0).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
   const pages = Math.max(1, Math.ceil(list.length / cap));
   if (ui.page >= pages) ui.page = 0;
@@ -3082,7 +3090,7 @@ function renderClosingDetails(closingId) {
   const closingWriteOffs = Array.isArray(closing.stockWriteOffsSnapshot) ? closing.stockWriteOffsSnapshot : [];
   const openingUser = closing.usuario_apertura || state.cashBoxes.find((box) => box.id === closing.cashBoxId)?.usuario_apertura || '-';
   const closingUser = closing.usuario_cierre || state.cashBoxes.find((box) => box.id === closing.cashBoxId)?.usuario_cierre || '-';
-  if (closingSummaryText) closingSummaryText.innerHTML = `<div class="card"><h4>SECCIÓN 1 – INFORMACIÓN GENERAL</h4><p>Número de cierre: ${String(closing.id || '-').slice(-8)}</p><p>Fecha de apertura: ${openAt.toLocaleDateString()}</p><p>Hora de apertura: ${openAt.toLocaleTimeString()}</p><p>Fecha de cierre: ${closeAt.toLocaleDateString()}</p><p>Hora de cierre: ${closeAt.toLocaleTimeString()}</p><p>Usuario que abrió: ${openingUser}</p><p>Usuario que cerró: ${closingUser}</p><p>Tiempo total de caja abierta: ${formatDurationMs(closeAt - openAt)}</p></div><div class="card"><h4>SECCIÓN 2 – RESUMEN FINANCIERO</h4><p>Inicio de caja: ${money(openingCash)}</p><p>Total ventas brutas: ${money(grossSales)}</p><p>Pagos de deuda cobrados: ${money(debtCollected)}</p><p>Total descuentos: ${money(totalDiscounts)}</p><p>Total ingresos netos: ${money((grossSales - totalDiscounts) + debtCollected)}</p><p>Total en efectivo: ${money(totalCash)}</p><p>Total QR: ${money(totalQr)}</p><p>Total salidas externas efectivo: ${money(outCash)}</p><p>Total salidas externas QR: ${money(outQr)}</p><p>Total entradas externas efectivo: ${money(inCash)}</p><p>Total entradas externas QR: ${money(inQr)}</p><p>Total efectivo final: ${money(totalCashFinal)}</p><p>Total QR final: ${money(totalQrFinal)}</p><p>Valor total en caja (incluye valor de caja): ${money(totalInBox)}</p><p>Valor efectivo real de venta entregado: ${money(realDelivered)}</p></div><div class="card"><h4>HISTORIAL DE VENTAS DE CIERRE</h4><table><thead><tr><th>Fecha</th><th>Nro pedido</th><th>Método</th><th>Efectivo</th><th>QR</th><th>Deuda</th><th>Total</th><th>Usuario</th><th>Estado</th></tr></thead><tbody>${historyRowsDetailed}</tbody><tfoot><tr><th colspan="3">Totales (sin anuladas)</th><th>${money(totalsHistory.cash)}</th><th>${money(totalsHistory.qr)}</th><th>${money(totalsHistory.debt)}</th><th colspan="3"></th></tr></tfoot></table></div><div class="card"><h4>Productos vendidos (costos y ganancias)</h4><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Costo</th><th>Ganancia</th><th>Total</th></tr></thead><tbody>${agg.products.length ? agg.products.map((row) => `<tr><td>${row.name}</td><td>${row.qty}</td><td>${money(row.cost || 0)}</td><td>${money(row.profit || 0)}</td><td>${money(row.total)}</td></tr>`).join('') : '<tr><td colspan="5">Sin productos vendidos.</td></tr>'}</tbody><tfoot><tr><th colspan="2">Totales</th><th>${money(agg.totalCost || 0)}</th><th>${money(agg.totalProfit || 0)}</th><th>${money(agg.totalRevenue || 0)}</th></tr></tfoot></table></div><div class="card"><h4>SECCIÓN 3 – MÉTRICAS OPERATIVAS</h4><p>Cantidad total de ventas: ${closing.salesCount || sales.length}</p><p>Total productos vendidos: ${agg.qtyTotal}</p><p>Ticket promedio: ${money(agg.avgTicket)}</p><p>Venta más alta: ${money(agg.saleMax)}</p><p>Venta más baja: ${money(agg.saleMin)}</p><p>Ventas eliminadas: ${deletedCount} · Mov. caja: ${outflowCount} · Pagos deuda: ${debtPaymentsCount}</p></div><div class="card"><h4>Productos dados de baja</h4><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Usuario</th><th>Fecha</th></tr></thead><tbody>${closingWriteOffs.length ? closingWriteOffs.map((row) => `<tr><td>${escapeHtml(row.productName || '-')}</td><td>${Number(row.qty || 0)}</td><td>${escapeHtml(row.reason || '-')}</td><td>${escapeHtml(row.user || '-')}</td><td>${new Date(row.createdAt || closing.closedAt).toLocaleString()}</td></tr>`).join('') : '<tr><td colspan="5">Sin productos dados de baja.</td></tr>'}</tbody></table></div><div class="card"><h4>Pagos de deuda</h4><table><thead><tr><th>Fecha pago</th><th>Persona</th><th>Detalle compra</th><th>Método</th><th>Monto</th><th>Usuario</th></tr></thead><tbody>${debtPayments.map((p) => { const sale = saleRecordForPayment(p); const person = state.people.find((x) => x.id === p.debtorId); return `<tr><td>${new Date(p.paidAt).toLocaleString()}</td><td>${personFullName(person) || '-'}</td><td>${sale?.items?.map((i) => `${i.name} x${i.qty}`).join(', ') || '-'}</td><td>${p.method || '-'}</td><td>${money(p.amount || 0)}</td><td>${p.paidBy || '-'}</td></tr>`; }).join('') || '<tr><td colspan="6">Sin pagos de deuda.</td></tr>'}</tbody></table></div><div class="card"><h4>Detalle de entradas</h4><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Método</th><th>Monto</th><th>Usuario</th></tr></thead><tbody>${entries.map((m) => `<tr><td>${new Date(m.createdAt).toLocaleString()}</td><td>${m.description || '-'}</td><td>${m.method || '-'}</td><td>${money(m.amount || 0)}</td><td>${m.user || '-'}</td></tr>`).join('') || '<tr><td colspan="5">Sin entradas.</td></tr>'}</tbody></table></div><div class="card"><h4>Detalle de salidas</h4><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Método</th><th>Monto</th><th>Usuario</th></tr></thead><tbody>${exits.map((m) => `<tr><td>${new Date(m.createdAt).toLocaleString()}</td><td>${m.description || '-'}</td><td>${m.method || '-'}</td><td>${money(m.amount || 0)}</td><td>${m.user || '-'}</td></tr>`).join('') || '<tr><td colspan="5">Sin salidas.</td></tr>'}</tbody></table></div>`;
+  if (closingSummaryText) closingSummaryText.innerHTML = `<div class="card"><h4>SECCIÓN 1 – INFORMACIÓN GENERAL</h4><p>Número de cierre: ${String(closing.id || '-').slice(-8)}</p><p>Fecha de apertura: ${openAt.toLocaleDateString()}</p><p>Hora de apertura: ${openAt.toLocaleTimeString()}</p><p>Fecha de cierre: ${closeAt.toLocaleDateString()}</p><p>Hora de cierre: ${closeAt.toLocaleTimeString()}</p><p>Usuario que abrió: ${openingUser}</p><p>Usuario que cerró: ${closingUser}</p><p>Tiempo total de caja abierta: ${formatDurationMs(closeAt - openAt)}</p></div><div class="card"><h4>SECCIÓN 2 – RESUMEN FINANCIERO</h4><p>Inicio de caja: ${money(openingCash)}</p><p>Total ventas brutas: ${money(grossSales)}</p><p>Pagos de deuda cobrados: ${money(debtCollected)}</p><p>Total descuentos: ${money(totalDiscounts)}</p><p>Total ingresos netos: ${money((grossSales - totalDiscounts) + debtCollected)}</p><p>Total en efectivo: ${money(totalCash)}</p><p>Total QR: ${money(totalQr)}</p><p>Total salidas externas efectivo: ${money(outCash)}</p><p>Total salidas externas QR: ${money(outQr)}</p><p>Total entradas externas efectivo: ${money(inCash)}</p><p>Total entradas externas QR: ${money(inQr)}</p><p>Total efectivo final: ${money(totalCashFinal)}</p><p>Total QR final: ${money(totalQrFinal)}</p><p>Valor total en caja (incluye valor de caja): ${money(totalInBox)}</p><p>Valor efectivo real de venta entregado: ${money(realDelivered)}</p></div><div class="card"><h4>HISTORIAL DE VENTAS DE CIERRE</h4><table><thead><tr><th>Fecha</th><th>Nro pedido</th><th>Método</th><th>Efectivo</th><th>QR</th><th>Deuda</th><th>Total</th><th>Usuario</th><th>Estado</th></tr></thead><tbody>${historyRowsDetailed}</tbody><tfoot><tr><th colspan="3">Totales (sin anuladas)</th><th>${money(totalsHistory.cash)}</th><th>${money(totalsHistory.qr)}</th><th>${money(totalsHistory.debt)}</th><th colspan="3"></th></tr></tfoot></table></div><div class="card"><h4>Productos vendidos (costos y ganancias)</h4><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Costo</th><th>Ganancia</th><th>Total</th></tr></thead><tbody>${agg.products.length ? agg.products.map((row) => `<tr><td>${row.name}</td><td>${row.qty}</td><td>${money(row.cost || 0)}</td><td>${money(row.profit || 0)}</td><td>${money(row.total)}</td></tr>`).join('') : '<tr><td colspan="5">Sin productos vendidos.</td></tr>'}</tbody><tfoot><tr><th colspan="2">Totales</th><th>${money(agg.totalCost || 0)}</th><th>${money(agg.totalProfit || 0)}</th><th>${money(agg.totalRevenue || 0)}</th></tr></tfoot></table></div><div class="card"><h4>SECCIÓN 3 – MÉTRICAS OPERATIVAS</h4><p>Cantidad total de ventas: ${closing.salesCount || sales.length}</p><p>Total productos vendidos: ${agg.qtyTotal}</p><p>Ticket promedio: ${money(agg.avgTicket)}</p><p>Venta más alta: ${money(agg.saleMax)}</p><p>Venta más baja: ${money(agg.saleMin)}</p><p>Ventas eliminadas: ${deletedCount} · Mov. caja: ${outflowCount} · Pagos deuda: ${debtPaymentsCount}</p></div><div class="card"><h4>Productos dados de baja</h4><table><thead><tr><th>Producto</th><th>Cantidad</th><th>Motivo</th><th>Usuario</th><th>Fecha</th></tr></thead><tbody>${closingWriteOffs.length ? closingWriteOffs.map((row) => `<tr><td>${escapeHtml(row.productName || '-')}</td><td>${Number(row.qty || 0)}</td><td>${escapeHtml(row.reason || '-')}</td><td>${escapeHtml(row.user || '-')}</td><td>${new Date(row.createdAt || closing.closedAt).toLocaleString()}</td></tr>`).join('') : '<tr><td colspan="5">Sin productos dados de baja.</td></tr>'}</tbody></table></div><div class="card"><h4>Pagos de deuda</h4><table><thead><tr><th>Fecha pago</th><th>Persona</th><th>Detalle compra</th><th>Método</th><th>Monto</th><th>Usuario</th></tr></thead><tbody>${debtPayments.map((p) => { const sale = saleRecordForPayment(p); const person = state.people.find((x) => x.id === p.debtorId); return `<tr><td>${new Date(p.paidAt).toLocaleString()}</td><td>${personFullName(person) || '-'}</td><td>${debtPaymentDetailText(p, sale)}</td><td>${p.method || '-'}</td><td>${money(p.amount || 0)}</td><td>${p.paidBy || '-'}</td></tr>`; }).join('') || '<tr><td colspan="6">Sin pagos de deuda.</td></tr>'}</tbody></table></div><div class="card"><h4>Detalle de entradas</h4><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Método</th><th>Monto</th><th>Usuario</th></tr></thead><tbody>${entries.map((m) => `<tr><td>${new Date(m.createdAt).toLocaleString()}</td><td>${m.description || '-'}</td><td>${m.method || '-'}</td><td>${money(m.amount || 0)}</td><td>${m.user || '-'}</td></tr>`).join('') || '<tr><td colspan="5">Sin entradas.</td></tr>'}</tbody></table></div><div class="card"><h4>Detalle de salidas</h4><table><thead><tr><th>Fecha</th><th>Descripción</th><th>Método</th><th>Monto</th><th>Usuario</th></tr></thead><tbody>${exits.map((m) => `<tr><td>${new Date(m.createdAt).toLocaleString()}</td><td>${m.description || '-'}</td><td>${m.method || '-'}</td><td>${money(m.amount || 0)}</td><td>${m.user || '-'}</td></tr>`).join('') || '<tr><td colspan="5">Sin salidas.</td></tr>'}</tbody></table></div>`;
   if (closingSalesTable) closingSalesTable.innerHTML = sales.length ? sales.map((sale) => `<tr><td>${new Date(sale.createdAt).toLocaleString()}</td><td>#${orderNumberLabel(sale.orderNumber)}</td><td>${sale.payment}</td><td>${money(sale.total)}</td><td>${sale.user}</td></tr>`).join('') : '<tr><td colspan="5">Sin ventas.</td></tr>';
   if (closingProductsTable) {
     const aggProducts = agg.products;
@@ -3203,10 +3211,7 @@ function renderDebtors() {
       try {
         await syncToCloud({ modules: ['operations'], reason: 'debt-payment-manual-save' });
         await pullFromCloud({ force: true, modules: ['operations'], reason: 'debt-payment-manual-verify' });
-        const salesOk = [...pendingDebtSaleIds].every((saleId) => {
-          const sale = (state.sales || []).find((s) => s.id === saleId);
-          return sale && Number(sale.debtAmount || 0) <= 0 && sale.paymentStatus === 'realizado';
-        });
+        const salesOk = [...pendingDebtSaleIds].every((saleId) => (state.sales || []).some((s) => s.id === saleId));
         const paymentsOk = [...pendingDebtPaymentIds].every((paymentId) => (state.debtPayments || []).some((p) => p.id === paymentId));
         if (!salesOk || !paymentsOk) throw new Error('Verificación post-guardado de deudas no consistente.');
         pendingDebtSyncChanges = false;
@@ -3711,7 +3716,7 @@ function importProductsFromExcelFile(file) {
         const key = normalizeProductName(productName);
         const found = existingMap.get(key);
         if (!found) {
-          state.products.push({ id: uid(), name: productName, category, cost, price, hidden: false });
+          state.products.push({ id: uid(), name: productName, category, cost, price, hidden: false, sortOrder: nextProductSortOrderForCategory(category) });
           existingMap.set(key, state.products[state.products.length - 1]);
           created += 1;
         } else {
@@ -3719,11 +3724,13 @@ function importProductsFromExcelFile(file) {
           found.category = category;
           found.cost = cost;
           found.price = price;
+          if (!Number.isFinite(Number(found.sortOrder))) found.sortOrder = nextProductSortOrderForCategory(category);
           updated += 1;
         }
+        restoreDeletedCategory(category);
         if (!state.categories.includes(category)) state.categories.push(category);
       });
-      persist();
+      persist({ includeHistory: true });
       renderProducts();
       renderSaleSelectors();
       alert(`Importación finalizada.\nCreados: ${created}\nActualizados: ${updated}\nErrores: ${errors.length}${errors.length ? `\n\n${errors.join('\n')}` : ''}`);
@@ -4663,13 +4670,15 @@ function openDebtPaymentModal({ saleIds = [], debtorId = '' } = {}) {
   const overlay = document.createElement('div');
   overlay.id = 'debtPayOverlay';
   overlay.className = 'modal';
-  overlay.innerHTML = `<div class="modal-card"><h3>Realizar pago</h3><div class="grid3"><label>Método<select id="dpMethod"><option value="efectivo">Efectivo</option><option value="qr">QR</option><option value="mixto">Mixto</option></select></label><label id="dpCashWrap" class="hidden">Efectivo<input id="dpCash" type="number" min="0" step="0.01" value="0" /></label><label id="dpQrWrap" class="hidden">QR<input id="dpQr" type="text" readonly value="Bs 0.00" /></label></div><div class="grid2"><button id="dpPayBtn" class="primary" type="button">Finalizar</button><button id="dpBackBtn" class="secondary" type="button">Atrás</button></div></div>`;
+  const singleSaleMode = saleIds.length === 1 && !debtorId;
+  overlay.innerHTML = `<div class="modal-card"><h3>Realizar pago</h3><div class="grid3"><label>Método<select id="dpMethod"><option value="efectivo">Efectivo</option><option value="qr">QR</option><option value="mixto">Mixto</option></select></label><label id="dpAmountWrap" class="${singleSaleMode ? '' : 'hidden'}">Monto a pagar<input id="dpAmount" type="number" min="0.01" step="0.01" value="0" /></label><label id="dpCashWrap" class="hidden">Efectivo<input id="dpCash" type="number" min="0" step="0.01" value="0" /></label><label id="dpQrWrap" class="hidden">QR<input id="dpQr" type="text" readonly value="Bs 0.00" /></label></div><div class="grid2"><button id="dpPayBtn" class="primary" type="button">Finalizar</button><button id="dpBackBtn" class="secondary" type="button">Atrás</button></div></div>`;
   document.body.appendChild(overlay);
   const getTargetSales = () => saleIds.length
     ? state.sales.filter((s) => saleIds.includes(s.id) && Number(s.debtAmount || 0) > 0 && s.paymentStatus !== 'realizado' && !isSaleAnnulled(s))
     : state.sales.filter((s) => s.debtorId === debtorId && Number(s.debtAmount || 0) > 0 && s.paymentStatus !== 'realizado' && !isSaleAnnulled(s));
   const totalDebt = () => getTargetSales().reduce((a, s) => a + Number(s.debtAmount || 0), 0);
   const methodEl = document.getElementById('dpMethod');
+  const amountEl = document.getElementById('dpAmount');
   const cashEl = document.getElementById('dpCash');
   const qrEl = document.getElementById('dpQr');
   const cashWrap = document.getElementById('dpCashWrap');
@@ -4678,9 +4687,16 @@ function openDebtPaymentModal({ saleIds = [], debtorId = '' } = {}) {
     const mixed = methodEl?.value === 'mixto';
     cashWrap?.classList.toggle('hidden', !mixed);
     qrWrap?.classList.toggle('hidden', !mixed);
-    if (mixed && qrEl) qrEl.value = money(Math.max(0, totalDebt() - Number(cashEl?.value || 0)));
+    const due = singleSaleMode ? Number(getTargetSales()[0]?.debtAmount || 0) : totalDebt();
+    if (singleSaleMode && amountEl) {
+      const val = Number(amountEl.value || 0);
+      if (!val || val > due) amountEl.value = due > 0 ? due.toFixed(2) : '0';
+    }
+    const amountForMixed = singleSaleMode ? Number(amountEl?.value || 0) : due;
+    if (mixed && qrEl) qrEl.value = money(Math.max(0, amountForMixed - Number(cashEl?.value || 0)));
   };
   methodEl?.addEventListener('change', sync);
+  amountEl?.addEventListener('input', sync);
   cashEl?.addEventListener('input', sync);
   sync();
   document.getElementById('dpBackBtn')?.addEventListener('click', () => overlay.remove());
@@ -4690,14 +4706,53 @@ function openDebtPaymentModal({ saleIds = [], debtorId = '' } = {}) {
     const targets = getTargetSales().sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
     if (!targets.length) { alert('No hay deudas pendientes para pagar.'); return; }
     const activeCash = getActiveCashBox();
-    const result = applyDebtPaymentToSales(targets, {
-      method,
-      mixedCashAmount: Number(cashEl?.value || 0),
-      paidAt: new Date().toISOString(),
-      paidBy: state.currentUser?.username || '-',
-      cashBoxId: activeCash?.id || ''
-    });
+    let result;
+    if (singleSaleMode) {
+      const sale = targets[0];
+      const currentDebt = Number(sale?.debtAmount || 0);
+      const enteredAmount = Number(amountEl?.value || 0);
+      const amount = Math.max(0, Math.min(currentDebt, enteredAmount));
+      if (amount <= 0) { alert('Ingresa un monto válido para pagar la deuda.'); return; }
+      const mixedCash = Math.max(0, Math.min(amount, Number(cashEl?.value || 0)));
+      const cashPaid = method === 'efectivo' ? amount : (method === 'mixto' ? mixedCash : 0);
+      const qrPaid = method === 'qr' ? amount : (method === 'mixto' ? Math.max(0, amount - mixedCash) : 0);
+      sale.debtAmount = Math.max(0, currentDebt - amount);
+      sale.paymentStatus = sale.debtAmount <= 0 ? 'realizado' : 'pendiente';
+      sale.modifiedAt = Date.now();
+      const paymentCount = (state.debtPayments || []).filter((p) => p.saleId === sale.id && !p.anulado).length + 1;
+      const baseDetail = sale?.items?.map((i) => `${i.name} x${i.qty}`).join(', ') || 'Compra';
+      const createdPayment = {
+        id: uid(),
+        paidAt: new Date().toISOString(),
+        modifiedAt: Date.now(),
+        saleCreatedAt: sale.createdAt,
+        debtorId: sale.debtorId,
+        saleId: sale.id,
+        method,
+        amount,
+        cashAmount: cashPaid,
+        qrAmount: qrPaid,
+        cashBoxId: activeCash?.id || '',
+        paidBy: state.currentUser?.username || '-',
+        archivado: false,
+        anulado: false,
+        anuladoPorVentaId: '',
+        detailLabel: `${baseDetail} (${paymentOrdinalLabel(paymentCount)})`,
+        paymentNumber: paymentCount,
+        partialPayment: sale.debtAmount > 0
+      };
+      result = { totalDebtAmount: amount, createdPayments: [createdPayment] };
+    } else {
+      result = applyDebtPaymentToSales(targets, {
+        method,
+        mixedCashAmount: Number(cashEl?.value || 0),
+        paidAt: new Date().toISOString(),
+        paidBy: state.currentUser?.username || '-',
+        cashBoxId: activeCash?.id || ''
+      });
+    }
     if (result.totalDebtAmount <= 0 || !result.createdPayments.length) { alert('La deuda seleccionada ya fue saldada.'); return; }
+    const expectedSalesState = new Map(targets.map((sale) => [String(sale.id || ''), { debtAmount: Number(sale.debtAmount || 0), paymentStatus: sale.paymentStatus || '' }]));
     state.debtPayments.unshift(...result.createdPayments.reverse());
     targets.forEach((sale) => { if (sale?.id) pendingDebtSaleIds.add(String(sale.id)); });
     result.createdPayments.forEach((payment) => { if (payment?.id) pendingDebtPaymentIds.add(String(payment.id)); });
@@ -4725,9 +4780,9 @@ function openDebtPaymentModal({ saleIds = [], debtorId = '' } = {}) {
         await cloudWritePath('operations/updatedAt', Date.now(), { includeToken, method: 'PUT' });
       }, { reason: 'debt-payment', saleIds: targets.map((s) => s.id), paymentIds: result.createdPayments.map((p) => p.id) });
       await pullFromCloud({ force: true, modules: ['operations'], reason: 'debt-payment-verify' });
-      const salesOk = [...pendingDebtSaleIds].every((saleId) => {
-        const sale = (state.sales || []).find((s) => s.id === saleId);
-        return sale && Number(sale.debtAmount || 0) <= 0 && sale.paymentStatus === 'realizado';
+      const salesOk = [...expectedSalesState.entries()].every(([saleId, expected]) => {
+        const sale = (state.sales || []).find((s) => String(s.id || '') === String(saleId));
+        return sale && Number(sale.debtAmount || 0) === Number(expected.debtAmount || 0) && String(sale.paymentStatus || '') === String(expected.paymentStatus || '');
       });
       const paymentsOk = [...pendingDebtPaymentIds].every((paymentId) => (state.debtPayments || []).some((p) => p.id === paymentId));
       if (!salesOk || !paymentsOk) throw new Error('Verificación post-guardado de deuda no consistente.');
@@ -4800,6 +4855,17 @@ function saleRecordForPayment(payment) {
   return state.sales.find((x) => x.id === payment.saleId) || state.deletedSales.find((x) => x.id === payment.saleId) || null;
 }
 
+function paymentOrdinalLabel(index = 1) {
+  const n = Math.max(1, Number(index || 1));
+  const labels = ['primer pago', 'segundo pago', 'tercer pago', 'cuarto pago', 'quinto pago', 'sexto pago', 'séptimo pago', 'octavo pago', 'noveno pago', 'décimo pago'];
+  return labels[n - 1] || `pago #${n}`;
+}
+
+function debtPaymentDetailText(payment, sale = null) {
+  if (payment?.detailLabel) return String(payment.detailLabel);
+  return sale?.items?.map((i) => `${i.name} x${i.qty}`).join(', ') || '-';
+}
+
 function renderDebtPayments() {
   if (!debtPaymentsTable) return;
   console.info('[debt][render]', { mode: state.debtPaymentsView || 'history', paymentsCount: state.debtPayments?.length || 0 });
@@ -4831,7 +4897,7 @@ function renderDebtPayments() {
     debtPaymentsTable.innerHTML = filtered.length ? filtered.map((p) => {
       const sale = saleRecordForPayment(p);
       const person = state.people.find((x) => x.id === p.debtorId);
-      return `<tr><td>${personFullName(person) || '-'}</td><td>${new Date(p.paidAt).toLocaleString()}</td><td>${sale?.items?.map((i) => `${i.name} x${i.qty}`).join(', ') || '-'}</td><td>${money(p.amount)}</td><td>${p.paidBy || '-'}</td><td>${p.anulado ? 'ANULADO' : 'Archivado'}</td></tr>`;
+      return `<tr><td>${personFullName(person) || '-'}</td><td>${new Date(p.paidAt).toLocaleString()}</td><td>${debtPaymentDetailText(p, sale)}</td><td>${money(p.amount)}</td><td>${p.paidBy || '-'}</td><td>${p.anulado ? 'ANULADO' : 'Archivado'}</td></tr>`;
     }).join('') : '<tr><td colspan="6">Sin pagos archivados.</td></tr>';
     return;
   }
@@ -4865,7 +4931,7 @@ function renderDebtPayments() {
       const sale = saleRecordForPayment(p);
       const paidBy = p.paidBy || p.user || '-';
       const saleDate = p.saleCreatedAt || sale?.createdAt || '';
-      return `<tr><td>${saleDate ? new Date(saleDate).toLocaleString() : '-'}</td><td>${new Date(p.paidAt).toLocaleString()}</td><td>${sale?.items?.map((i) => `${i.name} x${i.qty}`).join(', ') || '-'}</td><td>${money(p.amount)}</td><td>${paidBy}</td><td><button class="secondary" data-archive-debt-pay="${p.id}" type="button">Archivar</button></td></tr>`;
+      return `<tr><td>${saleDate ? new Date(saleDate).toLocaleString() : '-'}</td><td>${new Date(p.paidAt).toLocaleString()}</td><td>${debtPaymentDetailText(p, sale)}</td><td>${money(p.amount)}</td><td>${paidBy}</td><td><button class="secondary" data-archive-debt-pay="${p.id}" type="button">Archivar</button></td></tr>`;
     }).join('') : '<tr><td colspan="6">Sin pagos para este deudor.</td></tr>';
     if (debtPaymentsTable && !document.getElementById('archiveDebtorHistoryBtn')) {
       const btn = document.createElement('button');
@@ -4902,7 +4968,7 @@ function renderDebtPayments() {
     const sale = saleRecordForPayment(p);
     const paidBy = p.paidBy || p.user || '-';
     const saleDate = p.saleCreatedAt || sale?.createdAt || '';
-    return `<tr><td>${saleDate ? new Date(saleDate).toLocaleString() : '-'}</td><td>${new Date(p.paidAt).toLocaleString()}</td><td>${sale?.items?.map((i) => `${i.name} x${i.qty}`).join(', ') || '-'}</td><td>${money(p.amount)}</td><td>${paidBy}</td></tr>`;
+    return `<tr><td>${saleDate ? new Date(saleDate).toLocaleString() : '-'}</td><td>${new Date(p.paidAt).toLocaleString()}</td><td>${debtPaymentDetailText(p, sale)}</td><td>${money(p.amount)}</td><td>${paidBy}</td></tr>`;
   }).join('') : '<tr><td colspan="5">Sin pagos realizados.</td></tr>';
 }
 
@@ -6663,9 +6729,10 @@ function wireEvents() {
   addCategoryBtn?.addEventListener('click', () => {
     const cat = newCategoryInput?.value?.trim() || '';
     if (!cat || state.categories.includes(cat)) return;
+    restoreDeletedCategory(cat);
     state.categories.push(cat);
     if (newCategoryInput) newCategoryInput.value = '';
-    persist();
+    persist({ includeHistory: true });
     renderProducts();
     renderSaleSelectors();
     renderTouchSaleUi();
@@ -6675,6 +6742,7 @@ function wireEvents() {
     const price = Number(comboPriceInput?.value || 0);
     const ids = state.comboBuilderItems.length ? state.comboBuilderItems.map((p) => p.id) : (state.comboDraft.length ? state.comboDraft.map((p) => p.id) : Array.from(comboProductsSelect?.selectedOptions || []).map((o) => o.value));
     if (!name || price <= 0 || !ids.length) return;
+    restoreDeletedCategory('Combos');
     if (!state.categories.includes('Combos')) state.categories.push('Combos');
     state.products.push({ id: uid(), category: 'Combos', name, cost: 0, price, hidden: false, combo: ids, sortOrder: nextProductSortOrderForCategory('Combos') });
     state.comboBuilderItems = [];
@@ -7257,7 +7325,7 @@ function wireEvents() {
     state.activeDebtorId = '';
   });
 
-  cashClosingsTable?.addEventListener('click', (e) => {
+  cashClosingsTable?.addEventListener('click', async (e) => {
     const del = e.target.closest('button[data-closing-del]');
     if (del && hasPermission('deleteClosings')) {
       const removedId = del.dataset.closingDel;
@@ -7265,8 +7333,15 @@ function wireEvents() {
       state.deletedRecordIds = state.deletedRecordIds || { cashClosings: [], sales: [] };
       if (!Array.isArray(state.deletedRecordIds.cashClosings)) state.deletedRecordIds.cashClosings = [];
       if (!state.deletedRecordIds.cashClosings.includes(removedId)) state.deletedRecordIds.cashClosings.push(removedId);
-      persist();
+      markModulesDirty(['history'], 'closing-delete-local');
+      persist({ includeHistory: true, sync: false });
       renderCashClosings();
+      try {
+        await syncToCloud({ modules: ['history'], includeHistory: true, reason: 'closing-delete' });
+        await pullFromCloud({ force: true, modules: ['history'], includeHistory: true, reason: 'closing-delete-verify' });
+      } catch (err) {
+        console.error('[closing][delete] sync error', err);
+      }
       return;
     }
     const pdf = e.target.closest('button[data-closing-pdf]');
