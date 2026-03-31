@@ -1,4 +1,4 @@
-const state = {
+  const state = {
   products: JSON.parse(localStorage.getItem('libreria_sh82_products') || '[]'),
   sales: JSON.parse(localStorage.getItem('libreria_sh82_sales') || '[]'),
   deletedSales: JSON.parse(localStorage.getItem('libreria_sh82_deleted_sales') || '[]'),
@@ -5191,11 +5191,23 @@ async function syncToCloud(options = {}) {
         const path = CLOUD_MODULE_PATHS[moduleName];
         if (!path) continue;
         let remoteModule = {};
+        let remoteReadFailed = false;
         try {
           remoteModule = await cloudReadPath(path, { includeToken }) || {};
         } catch (err) {
           if (includeToken && [401, 403].includes(Number(err?.status || 0))) throw err;
-          remoteModule = {};
+          remoteReadFailed = true;
+          console.warn('[sync][guard] lectura remota fallida; escritura del módulo bloqueada', {
+            moduleName,
+            path,
+            status: Number(err?.status || 0) || null,
+            message: err?.message || 'error de lectura remota sin detalle',
+            includeToken,
+            reason: options.reason || 'sync'
+          });
+        }
+        if (remoteReadFailed) {
+          continue;
         }
         const localModule = localModules[moduleName] || {};
         let payload = { ...localModule };
